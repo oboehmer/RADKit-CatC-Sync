@@ -1,0 +1,81 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "radkit-catc-sync"
+version = "0.1.0"
+description = "Sync Cisco Catalyst Center device inventory into a RADKit service"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.11"
+authors = [
+    { name = "Oliver Boehmer", email = "oboehmer@cisco.com" },
+]
+keywords = ["radkit", "catalyst-center", "dnac", "inventory", "cisco"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: System Administrators",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: System :: Systems Administration",
+]
+
+dependencies = [
+    "requests>=2.31",
+    "urllib3>=2.0",
+    "python-dotenv>=1.0",
+    "cisco-radkit-service>=1.9",
+    "cisco-radkit-common>=1.9",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-mock>=3.12",
+    "ruff>=0.4",
+    "mypy>=1.10",
+    "types-requests>=2.31",
+]
+
+[project.scripts]
+catc-sync = "catc_sync:main"
+
+[project.urls]
+Homepage = "https://github.com/oboehmer/RADKit-CatC-Sync"
+Issues = "https://github.com/oboehmer/RADKit-CatC-Sync/issues"
+
+[tool.hatch.build.targets.wheel]
+packages = ["catc_sync.py"]
+
+[tool.uv]
+# RADKit packages are hosted on Cisco's private PyPI index.
+# uv will automatically use this when running `uv pip install` or `uv sync`.
+extra-index-url = ["https://radkit.cisco.com/pip"]
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "C4", "UP", "B", "SIM"]
+ignore = [
+    "T201",   # print statements — intentional in this script
+    "TID251", # radkit-specific bans not applicable here
+]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+# radkit_service and radkit_common are only available in the RADKit runtime
+# environment and have no published stubs — silence import errors for them.
+[[tool.mypy.overrides]]
+module = [
+    "radkit_common.*",
+    "radkit_service.*",
+]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

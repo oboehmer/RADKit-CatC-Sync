@@ -1,0 +1,93 @@
+# catc_sync.toml — Configuration for RADKit-CatC-Sync
+#
+# Copy this file to catc_sync.toml and adjust for your environment.
+# Passwords must be set via environment variables or a .env file.
+
+# ---------------------------------------------------------------------------
+# Catalyst Center clusters
+# ---------------------------------------------------------------------------
+[catc]
+
+# List of Catalyst Center cluster URLs to sync from.
+clusters = [
+    # "https://catc1.example.com",
+    # "https://catc2.example.com",
+]
+
+# CatC username (optional here — can also be set via CATC_USER env var).
+# user = "admin"
+
+# Disable TLS certificate verification for CatC connections (default: true).
+# Set to false when CatC uses a self-signed or internal CA certificate.
+# Can also be overridden per-run with the -k / --no-verify-tls CLI flag.
+# verify_tls = true
+
+# ---------------------------------------------------------------------------
+# RADKit service
+# ---------------------------------------------------------------------------
+[radkit]
+
+# RADKit ControlAPI base URL (default: https://localhost:8081/api/v1)
+# base_url = "https://localhost:8081/api/v1"
+
+# RADKit admin username (optional — can also be set via RADKIT_ADMIN_USER env var).
+# admin_user = "superadmin"
+
+# SSH username assigned to all imported devices (optional — can also be set
+# via RADKIT_SSH_USER env var).
+# ssh_user = "netops"
+
+# ---------------------------------------------------------------------------
+# Device name filters
+# ---------------------------------------------------------------------------
+[filters]
+
+# Regex patterns applied to the raw CatC hostname / FQDN before name
+# normalisation.  Matching uses re.search with re.IGNORECASE — patterns match
+# anywhere in the string; use ^ / $ anchors to restrict to start / end.
+#
+# If whitelist is non-empty, only devices whose hostname matches at least one
+# pattern are imported.  Blacklist always takes precedence over whitelist.
+
+whitelist = []     # e.g. ["^router-", "^sw-"]
+blacklist = []     # e.g. ["\\.lab\\.", "^test"]
+
+# ---------------------------------------------------------------------------
+# Metadata
+# ---------------------------------------------------------------------------
+[metadata]
+
+# Key used to track ownership in RADKit device metadata.
+# Changing this after the first sync will orphan previously managed devices.
+# source_key = "catc_source"
+
+# CatC device fields to sync as RADKit metadata.  Only stable inventory
+# fields are included by default — volatile fields like upTime or
+# lastUpdateTime are excluded to avoid unnecessary update churn.
+# Override with the full list of CatC attribute names you want synced.
+# fields = [
+#     "id",
+#     "hostname",
+#     "managementIpAddress",
+#     "platformId",
+#     "serialNumber",
+#     "softwareType",
+#     "softwareVersion",
+#     "family",
+#     "series",
+#     "type",
+#     "role",
+#     "macAddress",
+#     "snmpLocation",
+#     "managementState",
+# ]
+
+# ---------------------------------------------------------------------------
+# Sync behaviour
+# ---------------------------------------------------------------------------
+[sync]
+
+# Automatically adopt unmanaged RADKit devices that share a name with a CatC
+# device (default: false).  When false, such conflicts are skipped with a
+# warning.  Can also be overridden per-run with the -A / --adopt-existing flag.
+# adopt_existing = false
