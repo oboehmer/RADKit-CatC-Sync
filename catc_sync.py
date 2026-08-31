@@ -498,20 +498,23 @@ class Stats:
     unchanged: int = 0
     adopted: int = 0
     deleted: int = 0
+    filtered_kept: int = 0
     skipped: int = 0
     errors: int = 0
     warnings: list[str] = field(default_factory=list)
 
-    def summary(self) -> str:
+    def summary(self, dry_run: bool = False) -> str:
+        header = "--- Sync Summary (DRY-RUN) ---" if dry_run else "--- Sync Summary ---"
         lines = [
-            "--- Sync Summary ---",
-            f"  Added:     {self.added}",
-            f"  Updated:   {self.updated}",
-            f"  Unchanged: {self.unchanged}",
-            f"  Adopted:   {self.adopted}  (existing unmanaged devices taken over)",
-            f"  Deleted:   {self.deleted}",
-            f"  Skipped:   {self.skipped}",
-            f"  Errors:    {self.errors}",
+            header,
+            f"  Added:           {self.added}",
+            f"  Updated:         {self.updated}",
+            f"  Unchanged:       {self.unchanged}",
+            f"  Adopted:         {self.adopted}  (existing unmanaged devices taken over)",
+            f"  Deleted:         {self.deleted}",
+            f"  Filtered (kept): {self.filtered_kept}",
+            f"  Skipped:         {self.skipped}",
+            f"  Errors:          {self.errors}",
         ]
         if self.warnings:
             lines.append(f"  Warnings: {len(self.warnings)}")
@@ -892,6 +895,7 @@ def run_sync(
                 )
                 logger.warning(msg)
                 stats.warnings.append(msg)
+                stats.filtered_kept += len(filtered_managed)
 
     return stats
 
@@ -1007,7 +1011,7 @@ def main() -> int:
         return 1
 
     print()
-    print(stats.summary())
+    print(stats.summary(dry_run=args.dry_run))
 
     return 1 if stats.errors else 0
 
