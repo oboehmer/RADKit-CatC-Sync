@@ -58,6 +58,7 @@ DEVICE_BLACKLIST: list[str] = []
 RADKIT_BASE_URL = "https://localhost:8081/api/v1"
 META_SOURCE = "catc_source"
 ADOPT_EXISTING: bool = False
+DELETE_FILTERED: bool = False
 CONFIG_ENV_FALLBACKS: dict[str, str] = {}
 
 
@@ -76,6 +77,7 @@ def load_config(config_path: Path | None) -> None:
         META_SOURCE, \
         METADATA_FIELDS, \
         ADOPT_EXISTING, \
+        DELETE_FILTERED, \
         CONFIG_ENV_FALLBACKS
 
     if config_path is None:
@@ -125,6 +127,8 @@ def load_config(config_path: Path | None) -> None:
     sync = cfg.get("sync", {})
     if "adopt_existing" in sync:
         ADOPT_EXISTING = sync["adopt_existing"]
+    if "delete_filtered" in sync:
+        DELETE_FILTERED = sync["delete_filtered"]
 
     # Non-sensitive values that can serve as fallbacks for env vars
     if "user" in catc:
@@ -555,13 +559,16 @@ def fetch_fresh_inventory(
     stats: Stats,
     *,
     verify_tls: bool = True,
-) -> dict[str, tuple[CatCDevice, str]]:
+) -> tuple[dict[str, tuple[CatCDevice, str]], set[str]]:
     """
     Fetch devices from all CatC clusters.
-    Returns {radkit_name: (device, catc_hostname)}.
+    Returns ({radkit_name: (device, catc_hostname)}, filtered_names).
+    filtered_names contains normalised names of devices that were present in
+    CatC but excluded by whitelist/blacklist filters.
     Cross-cluster hostname collisions are warned about; first cluster wins.
     """
     fresh: dict[str, tuple[CatCDevice, str]] = {}
+    filtered: set[str] = set()
 
     for cluster_url in clusters:
         client = CatCClient(
@@ -594,7 +601,8 @@ def fetch_fresh_inventory(
 
             # Filter on raw FQDN before normalisation
             if not should_import(device.hostname):
-                logger.info("Filtered out device %s", device.hostname)
+                logger.debug("Filtered out device %s", device.hostname)
+                filtered.add(normalise_name(device.hostname))
                 stats.skipped += 1
                 continue
 
@@ -602,7 +610,12 @@ def fetch_fresh_inventory(
 
             if radkit_name in fresh:
                 existing_dev, existing_source = fresh[radkit_name]
-                if existing_source == catc_hostname:
+                if existing_source == catc_hostname and device.hostname == existing_dev.hostname:
+                    msg = (
+                        f"Duplicate device '{device.hostname}' returned by "
+                        f"{catc_hostname} — skipping duplicate entry."
+                    )
+                elif existing_source == catc_hostname:
                     msg = (
                         f"Hostname collision: '{device.hostname}' and "
                         f"'{existing_dev.hostname}' both normalise to "
@@ -620,13 +633,14 @@ def fetch_fresh_inventory(
 
             fresh[radkit_name] = (device, catc_hostname)
 
-    return fresh
+    return fresh, filtered
 
 
 def run_sync(
     dry_run: bool,
     update_passwords: bool,
     adopt_existing: bool,
+    delete_filtered: bool,
     catc_user: str,
     catc_password: str,
     radkit_admin_user: str,
@@ -661,7 +675,7 @@ def run_sync(
 
         # Step 2: fetch fresh inventory from all clusters
         logger.info("Fetching inventory from %d CatC cluster(s)...", len(CATC_CLUSTERS))
-        fresh = fetch_fresh_inventory(
+        fresh, filtered_names = fetch_fresh_inventory(
             CATC_CLUSTERS,
             catc_user,
             catc_password,
@@ -809,13 +823,20 @@ def run_sync(
 
         # Step 5: delete managed devices no longer present in CatC
         # Scoped to clusters that were actually synced this run.
-        to_delete = [
-            name
-            for name, info in managed.items()
-            if name not in fresh and info["catc_source"] in synced_hostnames
-        ]
-        logger.info("Devices to delete: %d", len(to_delete))
-        for name in to_delete:
+        # Separate "removed from CatC" from "filtered out by whitelist/blacklist".
+        gone = []
+        filtered_managed = []
+        for name, info in managed.items():
+            if name in fresh or info["catc_source"] not in synced_hostnames:
+                continue
+            if name in filtered_names:
+                filtered_managed.append(name)
+            else:
+                gone.append(name)
+
+        # 5a: devices truly removed from CatC — always delete
+        logger.info("Devices to delete: %d", len(gone))
+        for name in gone:
             existing_uuid = managed[name]["uuid"]
             catc_source = managed[name]["catc_source"]
             if dry_run:
@@ -831,6 +852,46 @@ def run_sync(
                 except Exception as exc:
                     logger.error("Failed to delete device '%s': %s", name, exc)
                     stats.errors += 1
+
+        # 5b: devices present in CatC but excluded by filters
+        if filtered_managed:
+            if delete_filtered:
+                logger.info(
+                    "Deleting %d managed device(s) excluded by filters: %s",
+                    len(filtered_managed),
+                    ", ".join(sorted(filtered_managed)),
+                )
+                for name in filtered_managed:
+                    existing_uuid = managed[name]["uuid"]
+                    catc_source = managed[name]["catc_source"]
+                    if dry_run:
+                        logger.info(
+                            "[DRY-RUN] Would delete filtered device '%s' (source: %s)",
+                            name,
+                            catc_source,
+                        )
+                        stats.deleted += 1
+                    else:
+                        try:
+                            _require_api_result_ok(
+                                api.delete_device(existing_uuid),
+                                f"delete filtered device '{name}'",
+                            )
+                            logger.info(
+                                "Deleted filtered device '%s' (source: %s)", name, catc_source
+                            )
+                            stats.deleted += 1
+                        except Exception as exc:
+                            logger.error("Failed to delete device '%s': %s", name, exc)
+                            stats.errors += 1
+            else:
+                msg = (
+                    f"{len(filtered_managed)} managed device(s) excluded by filters "
+                    f"but kept in RADKit (set sync.delete_filtered = true to remove): "
+                    + ", ".join(sorted(filtered_managed))
+                )
+                logger.warning(msg)
+                stats.warnings.append(msg)
 
     return stats
 
@@ -932,6 +993,7 @@ def main() -> int:
             dry_run=args.dry_run,
             update_passwords=args.update_passwords,
             adopt_existing=adopt_existing,
+            delete_filtered=DELETE_FILTERED,
             catc_user=env["CATC_USER"],
             catc_password=env["CATC_PASSWORD"],
             radkit_admin_user=env["RADKIT_ADMIN_USER"],

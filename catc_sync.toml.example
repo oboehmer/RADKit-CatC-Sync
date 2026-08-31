@@ -91,3 +91,8 @@ blacklist = []     # e.g. ["\\.lab\\.", "^test"]
 # device (default: false).  When false, such conflicts are skipped with a
 # warning.  Can also be overridden per-run with the -A / --adopt-existing flag.
 # adopt_existing = false
+
+# Delete managed RADKit devices that are present in CatC but excluded by
+# whitelist/blacklist filters (default: false).  When false, such devices are
+# kept in RADKit with a warning.  Useful when intentionally narrowing filters.
+# delete_filtered = false

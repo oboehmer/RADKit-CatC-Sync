@@ -294,6 +294,7 @@ class TestRunSync:
         catc_devices: list[catc_sync.CatCDevice],
         radkit_devices: tuple[dict, dict],
         adopt: bool = False,
+        delete_filtered: bool = False,
         dry_run: bool = False,
         update_pw: bool = False,
     ) -> tuple[catc_sync.Stats, MagicMock]:
@@ -316,6 +317,7 @@ class TestRunSync:
                 dry_run=dry_run,
                 update_passwords=update_pw,
                 adopt_existing=adopt,
+                delete_filtered=delete_filtered,
                 catc_user="user",
                 catc_password="pass",
                 radkit_admin_user="admin",
