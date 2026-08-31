@@ -601,11 +601,18 @@ def fetch_fresh_inventory(
             radkit_name = normalise_name(device.hostname)
 
             if radkit_name in fresh:
-                existing_source = fresh[radkit_name][1]
-                msg = (
-                    f"Hostname collision: '{radkit_name}' exists in both "
-                    f"'{existing_source}' and '{catc_hostname}'. Keeping first."
-                )
+                existing_dev, existing_source = fresh[radkit_name]
+                if existing_source == catc_hostname:
+                    msg = (
+                        f"Hostname collision: '{device.hostname}' and "
+                        f"'{existing_dev.hostname}' both normalise to "
+                        f"'{radkit_name}' on {catc_hostname}. Keeping first."
+                    )
+                else:
+                    msg = (
+                        f"Hostname collision: '{radkit_name}' exists in both "
+                        f"'{existing_source}' and '{catc_hostname}'. Keeping first."
+                    )
                 logger.warning(msg)
                 stats.warnings.append(msg)
                 stats.skipped += 1
