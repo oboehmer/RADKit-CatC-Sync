@@ -35,9 +35,9 @@ import requests
 import urllib3
 from dotenv import load_dotenv
 from radkit_common.types import ConnectionMethod, CustomSecretStr, DeviceType
-from radkit_common.utils import b64encode
+from radkit_common.utils import b64encode  # type: ignore[attr-defined]
 from radkit_service.control_api import APIResult, ControlAPI
-from radkit_service.webserver.connectors.utils import dict_to_metadata
+from radkit_service.webserver.connectors.utils import dict_to_metadata  # type: ignore[attr-defined]
 from radkit_service.webserver.models.devices import (
     MetaDataEntry,
     NewDevice,
