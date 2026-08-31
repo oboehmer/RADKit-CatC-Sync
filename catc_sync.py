@@ -909,9 +909,7 @@ def run_sync(
         # 5c: unmanaged devices that match filtered-out CatC names
         # These would have been adopted if not excluded by filters.
         if adopt_existing and filtered_names:
-            filtered_unmanaged = [
-                name for name in unmanaged if name in filtered_names
-            ]
+            filtered_unmanaged = [name for name in unmanaged if name in filtered_names]
             if filtered_unmanaged:
                 msg = (
                     f"{len(filtered_unmanaged)} unmanaged device(s) match filtered-out "
