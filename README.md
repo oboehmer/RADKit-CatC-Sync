@@ -9,6 +9,7 @@ Synchronise Cisco Catalyst Center (formerly DNA Center) device inventory into a 
 - Tracks ownership via `catc_source` metadata — only manages what it imports
 - Deletion is scoped: only removes devices from clusters that were synced this run
 - Whitelist/blacklist regex filters on device names
+- Narrowing filters removes previously-synced devices from RADKit (same as devices removed from CatC)
 - Cross-cluster hostname collision detection (first cluster wins, warning logged)
 - `--dry-run` mode to preview all changes before applying them
 - `--adopt-existing` to take ownership of manually-added RADKit devices
@@ -183,7 +184,7 @@ Every device imported by this script has a `catc_source` metadata field set to t
 On each run, the script:
 1. Reads all RADKit devices and splits them into managed / unmanaged sets
 2. Fetches fresh inventory from all configured CatC clusters
-3. Adds devices new to RADKit, updates existing ones, deletes those no longer in CatC
+3. Adds devices new to RADKit, updates existing ones, deletes those no longer in CatC (or excluded by filters)
 4. Deletion is scoped — only removes a device if its `catc_source` matches one of the clusters synced this run
 
 ## Development

@@ -48,6 +48,11 @@ clusters = [
 #
 # If whitelist is non-empty, only devices whose hostname matches at least one
 # pattern are imported.  Blacklist always takes precedence over whitelist.
+#
+# IMPORTANT: Narrowing filters will cause previously-synced devices that no
+# longer match to be deleted from RADKit — the same as if they were removed
+# from Catalyst Center.  Use --dry-run to preview the effect before applying
+# filter changes.
 
 whitelist = []     # e.g. ["^router-", "^sw-"]
 blacklist = []     # e.g. ["\\.lab\\.", "^test"]
@@ -91,8 +96,3 @@ blacklist = []     # e.g. ["\\.lab\\.", "^test"]
 # device (default: false).  When false, such conflicts are skipped with a
 # warning.  Can also be overridden per-run with the -A / --adopt-existing flag.
 # adopt_existing = false
-
-# Delete managed RADKit devices that are present in CatC but excluded by
-# whitelist/blacklist filters (default: false).  When false, such devices are
-# kept in RADKit with a warning.  Useful when intentionally narrowing filters.
-# delete_filtered = false
