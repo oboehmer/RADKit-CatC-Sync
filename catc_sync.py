@@ -396,6 +396,14 @@ METADATA_FIELDS: set[str] = {
 }
 
 
+def _format_name_list(names: list[str], max_names: int = 10) -> str:
+    """Join sorted names, truncating to *max_names* with a '... and N more' suffix."""
+    sorted_names = sorted(names)
+    if len(sorted_names) <= max_names:
+        return ", ".join(sorted_names)
+    return ", ".join(sorted_names[:max_names]) + f", ... and {len(sorted_names) - max_names} more"
+
+
 def _require_api_result_ok(result: APIResult, action: str) -> Any:
     """Return the typed API result payload or raise on RADKit API errors."""
     if APIResult.is_error(result):
@@ -519,7 +527,8 @@ class Stats:
         if self.warnings:
             lines.append(f"  Warnings: {len(self.warnings)}")
             for w in self.warnings:
-                lines.append(f"    - {w}")
+                display = w if len(w) <= 200 else w[:197] + "..."
+                lines.append(f"    - {display}")
         return "\n".join(lines)
 
 
@@ -862,7 +871,7 @@ def run_sync(
                 logger.info(
                     "Deleting %d managed device(s) excluded by filters: %s",
                     len(filtered_managed),
-                    ", ".join(sorted(filtered_managed)),
+                    _format_name_list(filtered_managed),
                 )
                 for name in filtered_managed:
                     existing_uuid = managed[name]["uuid"]
@@ -891,7 +900,7 @@ def run_sync(
                 msg = (
                     f"{len(filtered_managed)} managed device(s) excluded by filters "
                     f"but kept in RADKit (set sync.delete_filtered = true to remove): "
-                    + ", ".join(sorted(filtered_managed))
+                    + _format_name_list(filtered_managed)
                 )
                 logger.warning(msg)
                 stats.warnings.append(msg)
@@ -907,7 +916,7 @@ def run_sync(
                 msg = (
                     f"{len(filtered_unmanaged)} unmanaged device(s) match filtered-out "
                     f"CatC devices (would be adopted without filters): "
-                    + ", ".join(sorted(filtered_unmanaged))
+                    + _format_name_list(filtered_unmanaged)
                 )
                 logger.warning(msg)
                 stats.warnings.append(msg)
