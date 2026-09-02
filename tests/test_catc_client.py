@@ -6,12 +6,12 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-import catc_sync
+from radkit_catc_sync.catc_client import CatCClient
 
 
 class TestCatCClient:
     def test_authenticate_success(self) -> None:
-        client = catc_sync.CatCClient(
+        client = CatCClient(
             base_url="https://catc.example.com",
             username="admin",
             password="secret",  # noqa: S106
@@ -24,7 +24,7 @@ class TestCatCClient:
         assert client._token == "abc123"
 
     def test_authenticate_failure_raises(self) -> None:
-        client = catc_sync.CatCClient(
+        client = CatCClient(
             base_url="https://catc.example.com",
             username="admin",
             password="secret",  # noqa: S106
@@ -38,7 +38,7 @@ class TestCatCClient:
             client.authenticate()
 
     def test_authenticate_no_token_raises(self) -> None:
-        client = catc_sync.CatCClient(
+        client = CatCClient(
             base_url="https://catc.example.com",
             username="admin",
             password="secret",  # noqa: S106
@@ -53,7 +53,7 @@ class TestCatCClient:
             client.authenticate()
 
     def test_get_devices_single_page(self) -> None:
-        client = catc_sync.CatCClient(
+        client = CatCClient(
             base_url="https://catc.example.com",
             username="admin",
             password="secret",  # noqa: S106
@@ -74,7 +74,7 @@ class TestCatCClient:
         assert devices[0].hostname == "r1.example.com"
 
     def test_get_devices_http_error_raises(self) -> None:
-        client = catc_sync.CatCClient(
+        client = CatCClient(
             base_url="https://catc.example.com",
             username="admin",
             password="secret",  # noqa: S106
@@ -88,7 +88,7 @@ class TestCatCClient:
             client.get_devices()
 
     def test_hostname_property(self) -> None:
-        client = catc_sync.CatCClient(
+        client = CatCClient(
             base_url="https://catc.example.com:443",
             username="admin",
             password="secret",  # noqa: S106
@@ -96,7 +96,7 @@ class TestCatCClient:
         assert client.hostname == "catc.example.com"
 
     def test_verify_tls_false(self) -> None:
-        client = catc_sync.CatCClient(
+        client = CatCClient(
             base_url="https://catc.example.com",
             username="admin",
             password="secret",  # noqa: S106

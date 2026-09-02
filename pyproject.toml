@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "radkit-catc-sync"
-version = "0.1.0"
+version = "0.2.0"
 description = "Sync Cisco Catalyst Center device inventory into a RADKit service"
 readme = "README.md"
 license = { text = "MIT" }
@@ -41,14 +41,14 @@ dev = [
 ]
 
 [project.scripts]
-catc-sync = "catc_sync:main"
+catc-sync = "radkit_catc_sync.cli:main"
 
 [project.urls]
 Homepage = "https://github.com/oboehmer/RADKit-CatC-Sync"
 Issues = "https://github.com/oboehmer/RADKit-CatC-Sync/issues"
 
 [tool.hatch.build.targets.wheel]
-packages = ["catc_sync.py"]
+packages = ["radkit_catc_sync"]
 
 [tool.uv]
 # RADKit packages are hosted on Cisco's private PyPI index.

@@ -2,13 +2,16 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
 from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
 import pytest
 
-import catc_sync
+from radkit_catc_sync.builders import build_metadata, get_device_type
+from radkit_catc_sync.catc_client import CatCClient
+from radkit_catc_sync.config import AppConfig
+from radkit_catc_sync.models import CatCDevice, StoredRadkitDevice
+from radkit_catc_sync.sync import normalise_name, run_sync
 
 # ---------------------------------------------------------------------------
 # Test scenario dataclass
@@ -81,10 +84,10 @@ _CATC_HOSTNAME = "catc1.example.com"  # urlparse(_CLUSTER).hostname
 
 def _build_catc_devices(
     specs: tuple[tuple[str | None, str], ...],
-) -> list[catc_sync.CatCDevice]:
+) -> list[CatCDevice]:
     """Build CatCDevice list from (hostname, ip) specs."""
     return [
-        catc_sync.CatCDevice(
+        CatCDevice(
             hostname=h,
             management_ip=ip,
             software_type="IOS-XE",
@@ -97,47 +100,65 @@ def _build_catc_devices(
 
 def _build_managed(
     specs: tuple[tuple[str, str], ...],
-    catc_devices: list[catc_sync.CatCDevice] | None = None,
+    catc_devices: list[CatCDevice] | None = None,
     steady_state: bool = False,
-) -> dict[str, dict[str, Any]]:
+) -> dict[str, StoredRadkitDevice]:
     """Build managed dict.
 
     If steady_state=True and catc_devices provided, build entries with matching
     host, device_type, catc_source, and metadata so run_sync sees no changes.
     """
-    result: dict[str, dict[str, Any]] = {}
+    result: dict[str, StoredRadkitDevice] = {}
     # Build lookup from normalised name → CatCDevice for steady_state
-    catc_lookup: dict[str, catc_sync.CatCDevice] = {}
+    catc_lookup: dict[str, CatCDevice] = {}
     if steady_state and catc_devices:
         for dev in catc_devices:
             if dev.hostname:
-                catc_lookup[catc_sync.normalise_name(dev.hostname)] = dev
+                catc_lookup[normalise_name(dev.hostname)] = dev
 
+    _default = AppConfig()
     for name, source in specs:
         if steady_state and name in catc_lookup:
             dev = catc_lookup[name]
-            device_type = str(catc_sync._get_device_type(dev.software_type, dev.series))
-            meta = {m.key: m.value for m in catc_sync._build_metadata(dev, source)}
-            result[name] = {
-                "uuid": str(uuid4()),
-                "catc_source": source,
-                "host": dev.management_ip,
-                "device_type": device_type,
-                "metadata": meta,
+            device_type = str(get_device_type(dev.software_type, dev.series))
+            meta = {
+                m.key: m.value
+                for m in build_metadata(
+                    dev, source, _default.metadata_fields, _default.meta_source_key
+                )
             }
+            result[name] = StoredRadkitDevice(
+                name=name,
+                uuid=str(uuid4()),
+                catc_source=source,
+                host=dev.management_ip,
+                device_type=device_type,
+                metadata=meta,
+            )
         else:
-            result[name] = {
-                "uuid": str(uuid4()),
-                "catc_source": source,
-                "host": "",
-                "device_type": "",
-                "metadata": {},
-            }
+            result[name] = StoredRadkitDevice(
+                name=name,
+                uuid=str(uuid4()),
+                catc_source=source,
+                host="",
+                device_type="",
+                metadata={},
+            )
     return result
 
 
-def _build_unmanaged(names: tuple[str, ...]) -> dict[str, dict[str, Any]]:
-    return {name: {"uuid": str(uuid4()), "catc_source": ""} for name in names}
+def _build_unmanaged(names: tuple[str, ...]) -> dict[str, StoredRadkitDevice]:
+    return {
+        name: StoredRadkitDevice(
+            name=name,
+            uuid=str(uuid4()),
+            catc_source="",
+            host="",
+            device_type="",
+            metadata={},
+        )
+        for name in names
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -389,10 +410,13 @@ SCENARIOS = [
 @pytest.mark.parametrize("scenario", SCENARIOS, ids=lambda s: s.id)
 def test_sync_scenario(scenario: Scenario, mock_controlapi: MagicMock) -> None:
     """Unified integration test driven by scenario parameters."""
-    # Configure module globals
-    catc_sync.CATC_CLUSTERS = [_CLUSTER]
-    catc_sync.DEVICE_WHITELIST = list(scenario.whitelist)
-    catc_sync.DEVICE_BLACKLIST = list(scenario.blacklist)
+    # Build immutable config from scenario
+    config = AppConfig(
+        catc_clusters=[_CLUSTER],
+        device_whitelist=list(scenario.whitelist),
+        device_blacklist=list(scenario.blacklist),
+        adopt_existing=scenario.adopt,
+    )
 
     # Build test data
     catc_devices = _build_catc_devices(scenario.catc)
@@ -401,14 +425,14 @@ def test_sync_scenario(scenario: Scenario, mock_controlapi: MagicMock) -> None:
 
     # Patch CatC client + fetch_radkit_devices, let fetch_fresh_inventory run naturally
     with (
-        patch.object(catc_sync.CatCClient, "authenticate"),
-        patch.object(catc_sync.CatCClient, "get_devices", return_value=catc_devices),
-        patch("catc_sync.fetch_radkit_devices", return_value=(managed, unmanaged)),
+        patch.object(CatCClient, "authenticate"),
+        patch.object(CatCClient, "get_devices", return_value=catc_devices),
+        patch("radkit_catc_sync.sync.fetch_radkit_devices", return_value=(managed, unmanaged)),
     ):
-        stats = catc_sync.run_sync(
+        stats = run_sync(
+            config=config,
             dry_run=scenario.dry_run,
             update_passwords=scenario.update_pw,
-            adopt_existing=scenario.adopt,
             catc_user="testuser",
             catc_password="testpassword",  # noqa: S106
             radkit_admin_user="testadmin",
@@ -469,7 +493,7 @@ def test_sync_scenario(scenario: Scenario, mock_controlapi: MagicMock) -> None:
     # Verify deleted devices (match UUIDs back to managed dict)
     if scenario.exp_deleted_names is not None:
         deleted_uuids = {call[0][0] for call in mock_controlapi.delete_device.call_args_list}
-        expected_uuids = {managed[n]["uuid"] for n in scenario.exp_deleted_names}
+        expected_uuids = {managed[n].uuid for n in scenario.exp_deleted_names}
         assert deleted_uuids == expected_uuids, (
             f"deleted UUIDs don't match expected managed entries: {scenario.exp_deleted_names}"
         )
@@ -481,12 +505,12 @@ def test_sync_scenario(scenario: Scenario, mock_controlapi: MagicMock) -> None:
 
         if scenario.exp_updated_names is not None:
             for name in scenario.exp_updated_names:
-                assert managed[name]["uuid"] in updated_uuids, (
+                assert managed[name].uuid in updated_uuids, (
                     f"managed device '{name}' UUID not found in update_device calls"
                 )
 
         if scenario.exp_adopted_names is not None:
             for name in scenario.exp_adopted_names:
-                assert unmanaged[name]["uuid"] in updated_uuids, (
+                assert unmanaged[name].uuid in updated_uuids, (
                     f"unmanaged device '{name}' UUID not found in update_device calls (adopt)"
                 )

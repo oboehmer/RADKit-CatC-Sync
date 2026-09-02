@@ -1,11 +1,14 @@
-"""Tests for pure helper functions: normalise_name, _get_device_type, _format_name_list."""
+"""Tests for pure helper functions: normalise_name, get_device_type."""
 
 from __future__ import annotations
+
+from unittest.mock import MagicMock, patch
 
 import pytest
 from radkit_common.types import DeviceType
 
-import catc_sync
+from radkit_catc_sync.builders import get_device_type
+from radkit_catc_sync.sync import normalise_name, require_api_result_ok
 
 # ---------------------------------------------------------------------------
 # normalise_name
@@ -23,11 +26,11 @@ import catc_sync
     ],
 )
 def test_normalise_name(input_name: str, expected: str) -> None:
-    assert catc_sync.normalise_name(input_name) == expected
+    assert normalise_name(input_name) == expected
 
 
 # ---------------------------------------------------------------------------
-# _get_device_type
+# get_device_type
 # ---------------------------------------------------------------------------
 
 
@@ -45,47 +48,22 @@ def test_normalise_name(input_name: str, expected: str) -> None:
 def test_get_device_type(
     software_type: str | None, series: str | None, expected: DeviceType
 ) -> None:
-    assert catc_sync._get_device_type(software_type, series) == expected
+    assert get_device_type(software_type, series) == expected
 
 
 # ---------------------------------------------------------------------------
-# _format_name_list
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.parametrize(
-    "names, max_names, expected_contains, not_contains",
-    [
-        (["zebra", "alpha", "charlie"], 10, "alpha, charlie, zebra", None),
-        ([f"device{i}" for i in range(10)], 10, "device0", "... and"),
-        ([f"device{i}" for i in range(15)], 10, "... and 5 more", None),
-        (["a", "b", "c", "d", "e"], 2, "a, b, ... and 3 more", None),
-    ],
-)
-def test_format_name_list(
-    names: list[str], max_names: int, expected_contains: str, not_contains: str | None
-) -> None:
-    result = catc_sync._format_name_list(names, max_names)
-    assert expected_contains in result
-    if not_contains:
-        assert not_contains not in result
-
-
-# ---------------------------------------------------------------------------
-# _require_api_result_ok
+# require_api_result_ok
 # ---------------------------------------------------------------------------
 
 
 def test_require_api_result_ok_raises_on_error() -> None:
-    """Test _require_api_result_ok raises RuntimeError when APIResult.is_error() returns True."""
-    from unittest.mock import MagicMock, patch
-
+    """Test require_api_result_ok raises RuntimeError when APIResult.is_error() returns True."""
     mock_result = MagicMock()
     mock_result.root.message = "Something went wrong"
     mock_result.root.detail = "Detailed error information"
 
     with (
-        patch("catc_sync.APIResult.is_error", return_value=True),
+        patch("radkit_catc_sync.sync.APIResult.is_error", return_value=True),
         pytest.raises(RuntimeError, match="Something went wrong"),
     ):
-        catc_sync._require_api_result_ok(mock_result, "test_action")
+        require_api_result_ok(mock_result, "test_action")

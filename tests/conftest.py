@@ -1,4 +1,4 @@
-# tests/conftest.py — shared fixtures for catc_sync test suite
+# tests/conftest.py — shared fixtures for radkit_catc_sync test suite
 from __future__ import annotations
 
 from collections.abc import Callable, Generator
@@ -7,34 +7,9 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-import catc_sync
-
-# ---------------------------------------------------------------------------
-# Module-global reset (autouse) — every test starts with clean defaults
-# ---------------------------------------------------------------------------
-
-_DEFAULTS = {
-    "CATC_CLUSTERS": [],
-    "CATC_VERIFY_TLS": True,
-    "DEVICE_WHITELIST": [],
-    "DEVICE_BLACKLIST": [],
-    "RADKIT_BASE_URL": "https://localhost:8081/api/v1",
-    "META_SOURCE": "catc_source",
-    "ADOPT_EXISTING": False,
-    "CONFIG_ENV_FALLBACKS": {},
-}
-
-
-@pytest.fixture(autouse=True)
-def _reset_module_globals() -> Generator[None]:  # noqa: PT004
-    """Reset catc_sync module globals to defaults after each test."""
-    yield
-    for attr, default in _DEFAULTS.items():
-        # Use a fresh copy for mutable defaults
-        setattr(catc_sync, attr, default.copy() if isinstance(default, (list, dict)) else default)
-    catc_sync._whitelist_re = []
-    catc_sync._blacklist_re = []
-
+from radkit_catc_sync import AppConfig, CatCDevice, Stats
+from radkit_catc_sync.catc_client import CatCClient
+from radkit_catc_sync.models import StoredRadkitDevice
 
 # ---------------------------------------------------------------------------
 # CatCDevice factory
@@ -42,7 +17,7 @@ def _reset_module_globals() -> Generator[None]:  # noqa: PT004
 
 
 @pytest.fixture
-def make_device() -> Callable[..., catc_sync.CatCDevice]:
+def make_device() -> Callable[..., CatCDevice]:
     """Factory for CatCDevice instances with sensible defaults."""
 
     def _make(
@@ -51,11 +26,11 @@ def make_device() -> Callable[..., catc_sync.CatCDevice]:
         software_type: str | None = "IOS-XE",
         series: str | None = None,
         raw_extra: dict[str, Any] | None = None,
-    ) -> catc_sync.CatCDevice:
+    ) -> CatCDevice:
         raw: dict[str, Any] = {"hostname": hostname, "managementIpAddress": ip}
         if raw_extra:
             raw.update(raw_extra)
-        return catc_sync.CatCDevice(
+        return CatCDevice(
             hostname=hostname,
             management_ip=ip,
             software_type=software_type,
@@ -75,8 +50,8 @@ def make_device() -> Callable[..., catc_sync.CatCDevice]:
 def mock_controlapi() -> Generator[MagicMock]:
     """Patch ControlAPI + APIResult and return the mock api object."""
     with (
-        patch("catc_sync.ControlAPI") as mock_cls,
-        patch("catc_sync.APIResult") as mock_result,
+        patch("radkit_catc_sync.sync.ControlAPI") as mock_cls,
+        patch("radkit_catc_sync.sync.APIResult") as mock_result,
     ):
         mock_result.is_error.return_value = False
         api = MagicMock()
@@ -102,39 +77,63 @@ _SYNC_CREDS = {
 
 
 @pytest.fixture
-def run_sync(mock_controlapi: MagicMock) -> Callable[..., tuple[catc_sync.Stats, MagicMock]]:
-    """Return a helper that runs catc_sync.run_sync with mocked APIs.
+def run_sync(mock_controlapi: MagicMock) -> Callable[..., tuple[Stats, MagicMock]]:
+    """Return a helper that runs run_sync with mocked APIs.
 
     Patches CatCClient (authenticate + get_devices) and fetch_radkit_devices.
     Returns (Stats, mock_api).
     """
 
     def _run(
-        catc_devices: list[catc_sync.CatCDevice] | None = None,
+        catc_devices: list[CatCDevice] | None = None,
         radkit_devices: tuple[dict[str, Any], dict[str, Any]] | None = None,
         *,
         adopt: bool = False,
         dry_run: bool = False,
         update_pw: bool = False,
-    ) -> tuple[catc_sync.Stats, MagicMock]:
-        catc_sync.CATC_CLUSTERS = ["https://catc1.example.com"]
-        catc_sync.DEVICE_WHITELIST = []
-        catc_sync.DEVICE_BLACKLIST = []
-
+    ) -> tuple[Stats, MagicMock]:
         if catc_devices is None:
             catc_devices = []
         if radkit_devices is None:
             radkit_devices = ({}, {})
 
+        config = AppConfig(
+            catc_clusters=["https://catc1.example.com"],
+            device_whitelist=[],
+            device_blacklist=[],
+            adopt_existing=adopt,
+        )
+
+        # Convert dict-based test fixtures into StoredRadkitDevice objects.
+        # Tolerates both the full managed shape (host/device_type/metadata)
+        # and the minimal unmanaged shape ({uuid, catc_source}).
+        def _to_stored(name: str, data: dict[str, Any]) -> StoredRadkitDevice:
+            return StoredRadkitDevice(
+                name=name,
+                uuid=data["uuid"],
+                host=data.get("host", ""),
+                device_type=data.get("device_type", ""),
+                catc_source=data.get("catc_source", ""),
+                metadata=data.get("metadata", {}),
+            )
+
+        managed_dict = {n: _to_stored(n, d) for n, d in radkit_devices[0].items()}
+        unmanaged_dict = {n: _to_stored(n, d) for n, d in radkit_devices[1].items()}
+
         with (
-            patch.object(catc_sync.CatCClient, "authenticate"),
-            patch.object(catc_sync.CatCClient, "get_devices", return_value=catc_devices),
-            patch("catc_sync.fetch_radkit_devices", return_value=radkit_devices),
+            patch.object(CatCClient, "authenticate"),
+            patch.object(CatCClient, "get_devices", return_value=catc_devices),
+            patch(
+                "radkit_catc_sync.sync.fetch_radkit_devices",
+                return_value=(managed_dict, unmanaged_dict),
+            ),
         ):
-            stats = catc_sync.run_sync(
+            from radkit_catc_sync.sync import run_sync as run_sync_impl
+
+            stats = run_sync_impl(
+                config=config,
                 dry_run=dry_run,
                 update_passwords=update_pw,
-                adopt_existing=adopt,
                 catc_user=_SYNC_CREDS["catc_user"],
                 catc_password=_SYNC_CREDS["catc_password"],
                 radkit_admin_user=_SYNC_CREDS["radkit_admin_user"],

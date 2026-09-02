@@ -9,7 +9,9 @@ from uuid import uuid4
 import pytest
 from radkit_common.types import DeviceType
 
-import catc_sync
+from radkit_catc_sync.config import AppConfig
+from radkit_catc_sync.stats import Stats
+from radkit_catc_sync.sync import run_sync as run_sync_impl
 
 # ---------------------------------------------------------------------------
 # TestRunSyncIntegration — comprehensive run_sync with content verification
@@ -57,14 +59,14 @@ class TestRunSyncIntegration:
         assert upd_dev.device_type == DeviceType.IOS_XE
 
     def test_summary_dry_run_header(self) -> None:
-        stats = catc_sync.Stats()
+        stats = Stats()
         summary_dry = stats.summary(dry_run=True)
         summary_live = stats.summary(dry_run=False)
         assert "DRY-RUN" in summary_dry
         assert "DRY-RUN" not in summary_live
 
     def test_summary_truncates_long_warnings(self) -> None:
-        stats = catc_sync.Stats()
+        stats = Stats()
         long_warning = "x" * 250
         stats.warnings.append(long_warning)
         summary = stats.summary()
@@ -83,12 +85,12 @@ class TestRunSyncIntegration:
 
 class TestRunSyncErrorHandling:
     def test_empty_clusters_raises(self, mock_controlapi: MagicMock) -> None:
-        catc_sync.CATC_CLUSTERS = []
+        config = AppConfig(catc_clusters=[])
         with pytest.raises(ValueError, match="CATC_CLUSTERS is empty"):
-            catc_sync.run_sync(
+            run_sync_impl(
+                config=config,
                 dry_run=False,
                 update_passwords=False,
-                adopt_existing=False,
                 catc_user="testuser",
                 catc_password="testpassword",  # noqa: S106
                 radkit_admin_user="testadmin",
@@ -164,7 +166,7 @@ class TestRunSyncErrorHandling:
         api.update_device.assert_not_called()
 
     def test_summary_all_counters(self) -> None:
-        stats = catc_sync.Stats()
+        stats = Stats()
         stats.added = 1
         stats.updated = 2
         stats.deleted = 3
