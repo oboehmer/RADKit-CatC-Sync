@@ -7,6 +7,7 @@ from typing import Any
 from urllib.parse import urlparse
 
 from radkit_service.control_api import APIResult, ControlAPI
+from radkit_service.webserver.models.labels import NewLabel
 
 from .builders import build_metadata, build_new_device, build_update_device, get_device_type
 from .catc_client import CatCClient
@@ -58,6 +59,56 @@ def require_api_result_ok(result: APIResult, action: str) -> Any:
     return result.result
 
 
+def ensure_labels_exist(
+    api: ControlAPI,
+    config: AppConfig,
+    dry_run: bool,
+) -> dict[str, int]:
+    """
+    Ensure all configured labels exist in RADKit.
+
+    Auto-creates labels that don't exist yet. In dry-run mode, logs what would
+    be created but doesn't actually create them.
+
+    Args:
+        api: RADKit ControlAPI instance.
+        config: Application config (for device_labels).
+        dry_run: If True, don't create labels.
+
+    Returns:
+        Dictionary mapping label name → label ID.
+    """
+    if not config.device_labels:
+        return {}
+
+    # Fetch existing labels
+    stored_labels = require_api_result_ok(api.list_labels(), "list labels")
+    label_map: dict[str, int] = {label.name: label.id for label in (stored_labels or [])}
+
+    # Identify missing labels
+    missing_names = [name for name in config.device_labels if name not in label_map]
+
+    if missing_names:
+        if dry_run:
+            logger.info(
+                "[DRY-RUN] Would create %d missing label(s): %s",
+                len(missing_names),
+                ", ".join(missing_names),
+            )
+        else:
+            # Auto-create missing labels with default color #000000
+            new_labels = [NewLabel(name=name, color="#000000") for name in missing_names]
+            bulk_result = api.create_labels(new_labels)
+            # BulkResult has successful_results() method to get created labels
+            created_labels = list(bulk_result.successful_results())
+            logger.info("Created %d label(s)", len(created_labels))
+            # Update label_map with newly created labels
+            for label in created_labels:
+                label_map[label.name] = label.id
+
+    return label_map
+
+
 def fetch_radkit_devices(
     api: ControlAPI,
     config: AppConfig,
@@ -86,6 +137,7 @@ def fetch_radkit_devices(
             device_type=str(getattr(dev, "device_type", "")),
             catc_source=meta.get(config.meta_source_key, ""),
             metadata=meta,
+            labels=set(dev.labels or []),  # label IDs from the device
         )
         if meta.get(config.meta_source_key):
             managed[dev.name] = stored
@@ -245,6 +297,12 @@ def run_sync(
         fresh = fetch_fresh_inventory(config, filters, catc_user, catc_password, stats)
         logger.info("Total importable devices across all clusters: %d", len(fresh))
 
+        # Step 2.5: ensure configured labels exist in RADKit
+        logger.info("Ensuring configured labels exist in RADKit...")
+        label_config_ids = ensure_labels_exist(api, config, dry_run)
+        if label_config_ids:
+            logger.info("Configured labels: %s", ", ".join(label_config_ids.keys()))
+
         # Step 3: add new devices / adopt unmanaged conflicts
         to_add = [name for name in fresh if name not in managed]
         logger.info("Devices to add (or adopt): %d", len(to_add))
@@ -261,6 +319,7 @@ def run_sync(
                     stats.skipped += 1
                     continue
                 existing_uuid = unmanaged[name].uuid
+                # For adopt, add all configured labels (none exist yet on unmanaged device)
                 upd = build_update_device(
                     device=device,
                     catc_hostname=catc_hostname,
@@ -270,6 +329,7 @@ def run_sync(
                     ssh_password=ssh_password,
                     metadata_fields=config.metadata_fields,
                     meta_source_key=config.meta_source_key,
+                    labels_to_add=config.device_labels if config.device_labels else None,
                 )
                 if dry_run:
                     logger.info(
@@ -301,6 +361,7 @@ def run_sync(
                 radkit_name=name,
                 metadata_fields=config.metadata_fields,
                 meta_source_key=config.meta_source_key,
+                device_labels=config.device_labels if config.device_labels else None,
             )
             if dry_run:
                 logger.info(
@@ -358,6 +419,19 @@ def run_sync(
                 )
                 reasons.append(f"metadata ({', '.join(changed_keys)})")
 
+            # Compute missing labels to backfill
+            labels_to_add: list[str] = []
+            if config.device_labels and label_config_ids:
+                # Resolve configured label names to IDs
+                configured_label_ids = {label_config_ids[name] for name in config.device_labels}
+                # Find missing labels: configured IDs not present on device
+                missing_label_ids = configured_label_ids - existing.labels
+                # Map back to names for add operation
+                id_to_name = {v: k for k, v in label_config_ids.items()}
+                labels_to_add = [id_to_name[lid] for lid in missing_label_ids]
+                if labels_to_add:
+                    reasons.append(f"labels (+{', +'.join(labels_to_add)})")
+
             if not reasons:
                 logger.debug("No changes for device '%s' — skipping update", name)
                 stats.unchanged += 1
@@ -372,6 +446,7 @@ def run_sync(
                 ssh_password=ssh_password,
                 metadata_fields=config.metadata_fields,
                 meta_source_key=config.meta_source_key,
+                labels_to_add=labels_to_add if labels_to_add else None,
             )
 
             if dry_run:

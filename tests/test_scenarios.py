@@ -443,21 +443,21 @@ def test_sync_scenario(scenario: Scenario, mock_controlapi: MagicMock) -> None:
 
     # Assert stat counters
     assert stats.added == scenario.exp_added, f"added: {stats.added} != {scenario.exp_added}"
-    assert stats.updated == scenario.exp_updated, (
-        f"updated: {stats.updated} != {scenario.exp_updated}"
-    )
-    assert stats.deleted == scenario.exp_deleted, (
-        f"deleted: {stats.deleted} != {scenario.exp_deleted}"
-    )
-    assert stats.adopted == scenario.exp_adopted, (
-        f"adopted: {stats.adopted} != {scenario.exp_adopted}"
-    )
-    assert stats.unchanged == scenario.exp_unchanged, (
-        f"unchanged: {stats.unchanged} != {scenario.exp_unchanged}"
-    )
-    assert stats.skipped == scenario.exp_skipped, (
-        f"skipped: {stats.skipped} != {scenario.exp_skipped}"
-    )
+    assert (
+        stats.updated == scenario.exp_updated
+    ), f"updated: {stats.updated} != {scenario.exp_updated}"
+    assert (
+        stats.deleted == scenario.exp_deleted
+    ), f"deleted: {stats.deleted} != {scenario.exp_deleted}"
+    assert (
+        stats.adopted == scenario.exp_adopted
+    ), f"adopted: {stats.adopted} != {scenario.exp_adopted}"
+    assert (
+        stats.unchanged == scenario.exp_unchanged
+    ), f"unchanged: {stats.unchanged} != {scenario.exp_unchanged}"
+    assert (
+        stats.skipped == scenario.exp_skipped
+    ), f"skipped: {stats.skipped} != {scenario.exp_skipped}"
     assert stats.errors == scenario.exp_errors, f"errors: {stats.errors} != {scenario.exp_errors}"
 
     # Assert API call counts
@@ -480,23 +480,23 @@ def test_sync_scenario(scenario: Scenario, mock_controlapi: MagicMock) -> None:
     if scenario.exp_created_names is not None:
         created_devs = [call[0][0] for call in mock_controlapi.create_device.call_args_list]
         actual_names = sorted(d.name for d in created_devs)
-        assert actual_names == sorted(scenario.exp_created_names), (
-            f"created names: {actual_names} != {sorted(scenario.exp_created_names)}"
-        )
+        assert actual_names == sorted(
+            scenario.exp_created_names
+        ), f"created names: {actual_names} != {sorted(scenario.exp_created_names)}"
         # All created devices must be enabled with correct description
         for d in created_devs:
             assert d.enabled is True, f"created device '{d.name}' not enabled"
-            assert "Imported from CatC:" in d.description, (
-                f"created device '{d.name}' missing description prefix"
-            )
+            assert (
+                "Imported from CatC:" in d.description
+            ), f"created device '{d.name}' missing description prefix"
 
     # Verify deleted devices (match UUIDs back to managed dict)
     if scenario.exp_deleted_names is not None:
         deleted_uuids = {call[0][0] for call in mock_controlapi.delete_device.call_args_list}
         expected_uuids = {managed[n].uuid for n in scenario.exp_deleted_names}
-        assert deleted_uuids == expected_uuids, (
-            f"deleted UUIDs don't match expected managed entries: {scenario.exp_deleted_names}"
-        )
+        assert (
+            deleted_uuids == expected_uuids
+        ), f"deleted UUIDs don't match expected managed entries: {scenario.exp_deleted_names}"
 
     # Verify updated/adopted devices (both use update_device)
     if scenario.exp_updated_names is not None or scenario.exp_adopted_names is not None:
@@ -505,12 +505,12 @@ def test_sync_scenario(scenario: Scenario, mock_controlapi: MagicMock) -> None:
 
         if scenario.exp_updated_names is not None:
             for name in scenario.exp_updated_names:
-                assert managed[name].uuid in updated_uuids, (
-                    f"managed device '{name}' UUID not found in update_device calls"
-                )
+                assert (
+                    managed[name].uuid in updated_uuids
+                ), f"managed device '{name}' UUID not found in update_device calls"
 
         if scenario.exp_adopted_names is not None:
             for name in scenario.exp_adopted_names:
-                assert unmanaged[name].uuid in updated_uuids, (
-                    f"unmanaged device '{name}' UUID not found in update_device calls (adopt)"
-                )
+                assert (
+                    unmanaged[name].uuid in updated_uuids
+                ), f"unmanaged device '{name}' UUID not found in update_device calls (adopt)"

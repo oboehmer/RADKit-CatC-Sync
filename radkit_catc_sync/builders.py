@@ -18,6 +18,7 @@ from radkit_service.webserver.models.devices import (
     UpdateMetaDataSet,
     UpdateTerminal,
 )
+from radkit_service.webserver.models.labels import UpdateLabelSet
 
 from .models import CatCDevice
 
@@ -90,8 +91,12 @@ def build_new_device(
     radkit_name: str,
     metadata_fields: frozenset[str],
     meta_source_key: str,
+    device_labels: list[str] | None = None,
 ) -> NewDevice:
     """Build a NewDevice model for adding to RADKit."""
+    if device_labels is None:
+        device_labels = []
+
     terminal = NewTerminal(
         connection_method=ConnectionMethod.SSH,
         port=22,
@@ -109,6 +114,7 @@ def build_new_device(
         meta_data=build_metadata(device, catc_hostname, metadata_fields, meta_source_key),
         enabled=True,
         terminal=terminal,
+        labels=device_labels,
     )
 
 
@@ -121,8 +127,12 @@ def build_update_device(
     ssh_password: str,
     metadata_fields: frozenset[str],
     meta_source_key: str,
+    labels_to_add: list[str] | None = None,
 ) -> UpdateDevice:
     """Build an UpdateDevice model for updating in RADKit."""
+    if labels_to_add is None:
+        labels_to_add = []
+
     meta_update = UpdateMetaDataSet(
         replace=build_metadata(device, catc_hostname, metadata_fields, meta_source_key)
     )
@@ -143,5 +153,9 @@ def build_update_device(
             username=ssh_user,
             password=CustomSecretStr(ssh_password),
         )
+
+    # Add labels_to_add using UpdateLabelSet.add (never removes existing labels)
+    if labels_to_add:
+        kwargs["label_update"] = UpdateLabelSet(add=labels_to_add)
 
     return UpdateDevice(**kwargs)

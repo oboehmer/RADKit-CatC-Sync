@@ -51,6 +51,9 @@ class AppConfig:
         )
     )
 
+    # Labels
+    device_labels: list[str] = field(default_factory=list)
+
     # Sync behavior
     adopt_existing: bool = False
 
@@ -138,6 +141,10 @@ def load_config(config_path: Path | None) -> AppConfig:
         frozenset(metadata_fields_list) if metadata_fields_list else AppConfig().metadata_fields
     )
 
+    # Parse [labels] section
+    labels = cfg.get("labels", {})
+    device_labels = labels.get("names", [])
+
     # Parse [sync] section
     sync = cfg.get("sync", {})
     adopt_existing = sync.get("adopt_existing", False)
@@ -150,6 +157,7 @@ def load_config(config_path: Path | None) -> AppConfig:
         device_blacklist=device_blacklist,
         meta_source_key=meta_source_key,
         metadata_fields=metadata_fields,
+        device_labels=device_labels,
         adopt_existing=adopt_existing,
         catc_user=catc_user,
         radkit_admin_user=radkit_admin_user,

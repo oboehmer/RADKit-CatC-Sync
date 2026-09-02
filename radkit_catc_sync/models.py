@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 
@@ -41,3 +41,4 @@ class StoredRadkitDevice:
     device_type: str
     catc_source: str  # ownership marker (source CatC cluster)
     metadata: dict[str, str]
+    labels: set[int] = field(default_factory=set)  # current label IDs on device

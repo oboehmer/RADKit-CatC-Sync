@@ -88,6 +88,24 @@ blacklist = []     # e.g. ["\\.lab\\.", "^test"]
 # ]
 
 # ---------------------------------------------------------------------------
+# Labels
+# ---------------------------------------------------------------------------
+[labels]
+
+# List of label names to automatically assign to all imported devices.
+# Labels are added on device creation and also backfilled onto existing
+# managed devices during updates. The sync will never remove labels that are
+# already present on devices — it only ensures configured labels are present.
+#
+# If a configured label doesn't exist in RADKit, it will be automatically
+# created with the default color #000000.
+#
+# To add labels to devices, uncomment and populate the names list:
+# names = ["catc-managed", "sr12345"]
+
+names = []
+
+# ---------------------------------------------------------------------------
 # Sync behaviour
 # ---------------------------------------------------------------------------
 [sync]
