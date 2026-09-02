@@ -13,13 +13,25 @@ Synchronise Cisco Catalyst Center (formerly DNA Center) device inventory into a 
 - Cross-cluster hostname collision detection (first cluster wins, warning logged)
 - `--dry-run` mode to preview all changes before applying them
 - `--adopt-existing` to take ownership of manually-added RADKit devices
-- `--update-passwords` to refresh SSH credentials on existing devices
+- `--update-passwords` to refresh SSH credentials on existing devices in RADKit inventory
 - Loads `.env` and `catc_sync.toml` from the current working directory
+
+## Comparison with RADKit's built-in sync
+
+RADKit-Service can also sync CatC inventory into RADKit (and other Cisco
+controllers), but this package offers more flexibility, namely:
+
+- filter devices by name (RADKit-Service currently only supports filtering by CatC device tags)
+- use different device credentials than CatC
+- control the metadata items which are added to RADKit inventory
+
+If you don't need any of these capabilities, it's best to stick with
+RADKit-Service's built-in sync mechanism.
 
 ## Requirements
 
 - Python 3.11+
-- RADKit service installed and running on the same host
+- cisco-radkit-service packages installed
 - RADKit packages are distributed via Cisco's private PyPI index: `https://radkit.cisco.com/pip`
 
 ## Installation
