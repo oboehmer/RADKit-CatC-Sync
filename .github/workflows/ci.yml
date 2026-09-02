@@ -31,13 +31,13 @@ jobs:
         run: uv pip install --system -e ".[dev]"
 
       - name: Ruff — lint
-        run: ruff check catc_sync.py tests/
+        run: ruff check radkit_catc_sync/ tests/
 
       - name: Ruff — format check
-        run: ruff format --check catc_sync.py tests/
+        run: ruff format --check radkit_catc_sync/ tests/
 
       - name: Mypy — type check
-        run: mypy catc_sync.py
+        run: mypy radkit_catc_sync/ tests/
 
       - name: Pytest
         run: pytest

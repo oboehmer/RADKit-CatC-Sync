@@ -6,12 +6,13 @@ from typing import Any
 from uuid import uuid4
 
 from radkit_common.types import ConnectionMethod, DeviceType
-from radkit_service.webserver.models.base import DontUpdate
+from radkit_service.webserver.models.base import DontUpdate as DontUpdateType
 
-import catc_sync
+from radkit_catc_sync import AppConfig
+from radkit_catc_sync.builders import build_metadata, build_new_device, build_update_device
 
 # ---------------------------------------------------------------------------
-# _build_metadata
+# build_metadata
 # ---------------------------------------------------------------------------
 
 
@@ -24,12 +25,15 @@ class TestBuildMetadata:
                 "extraField": "should_be_filtered",
             }
         )
-        meta = catc_sync._build_metadata(device, "catc1.example.com")
+        config = AppConfig()
+        meta = build_metadata(
+            device, "catc1.example.com", config.metadata_fields, config.meta_source_key
+        )
         keys = {m.key for m in meta}
         assert "serialNumber" in keys
         assert "platformId" in keys
         assert "extraField" not in keys
-        assert "catc_source" in keys
+        assert config.meta_source_key in keys
 
     def test_none_values_become_empty_string(self, make_device: Any) -> None:
         device = make_device(
@@ -37,26 +41,30 @@ class TestBuildMetadata:
                 "serialNumber": None,
             }
         )
-        meta = catc_sync._build_metadata(device, "catc1.example.com")
+        config = AppConfig()
+        meta = build_metadata(
+            device, "catc1.example.com", config.metadata_fields, config.meta_source_key
+        )
         serial_entry = next((m for m in meta if m.key == "serialNumber"), None)
         assert serial_entry is not None
         assert serial_entry.value == ""
 
     def test_catc_source_added(self, make_device: Any) -> None:
         device = make_device()
-        meta = catc_sync._build_metadata(device, "catc2.example.com")
-        catc_entry = next((m for m in meta if m.key == "catc_source"), None)
+        config = AppConfig()
+        meta = build_metadata(
+            device, "catc2.example.com", config.metadata_fields, config.meta_source_key
+        )
+        catc_entry = next((m for m in meta if m.key == config.meta_source_key), None)
         assert catc_entry is not None
         assert catc_entry.value == "catc2.example.com"
 
     def test_metadata_catc_source_replaced_when_in_raw(self, make_device: Any) -> None:
         """Test that catc_source in raw is replaced by the cluster hostname."""
-        original_fields = catc_sync.METADATA_FIELDS.copy()
-        catc_sync.METADATA_FIELDS = original_fields | {"catc_source"}
+        config = AppConfig()
         device = make_device(raw_extra={"catc_source": "old-cluster"})
-        meta = catc_sync._build_metadata(device, "new-cluster")
-        catc_sync.METADATA_FIELDS = original_fields  # restore
-        sources = [m for m in meta if m.key == "catc_source"]
+        meta = build_metadata(device, "new-cluster", config.metadata_fields, config.meta_source_key)
+        sources = [m for m in meta if m.key == config.meta_source_key]
         assert len(sources) == 1
         assert sources[0].value == "new-cluster"
 
@@ -69,12 +77,15 @@ class TestBuildMetadata:
 class TestBuildNewDevice:
     def test_fields_populated(self, make_device: Any) -> None:
         device = make_device("sw1.example.com", "10.1.1.1")
-        new_dev = catc_sync.build_new_device(
+        config = AppConfig()
+        new_dev = build_new_device(
             device=device,
             catc_hostname="catc1.example.com",
             ssh_user="netops",
             ssh_password="secret",  # noqa: S106
             radkit_name="sw1",
+            metadata_fields=config.metadata_fields,
+            meta_source_key=config.meta_source_key,
         )
         assert new_dev.name == "sw1"
         assert new_dev.host == "10.1.1.1"
@@ -84,12 +95,15 @@ class TestBuildNewDevice:
 
     def test_terminal_ssh(self, make_device: Any) -> None:
         device = make_device("sw2.example.com", "10.1.1.2")
-        new_dev = catc_sync.build_new_device(
+        config = AppConfig()
+        new_dev = build_new_device(
             device=device,
             catc_hostname="catc1.example.com",
             ssh_user="netops",
             ssh_password="secret",  # noqa: S106
             radkit_name="sw2",
+            metadata_fields=config.metadata_fields,
+            meta_source_key=config.meta_source_key,
         )
         assert new_dev.terminal is not None
         assert new_dev.terminal.connection_method == ConnectionMethod.SSH
@@ -102,29 +116,35 @@ class TestBuildNewDevice:
 
 
 class TestBuildUpdateDevice:
-    def test_no_password_update(self, make_device: Any) -> None:
-        device = make_device("r1.example.com", "10.2.2.1")
-        upd = catc_sync.build_update_device(
+    def test_fields_populated_without_pw(self, make_device: Any) -> None:
+        device = make_device("r1.example.com", "10.0.0.1")
+        config = AppConfig()
+        upd = build_update_device(
             device=device,
             catc_hostname="catc1.example.com",
             existing_uuid=str(uuid4()),
             update_passwords=False,
             ssh_user="netops",
             ssh_password="secret",  # noqa: S106
+            metadata_fields=config.metadata_fields,
+            meta_source_key=config.meta_source_key,
         )
-        # When update_passwords=False, terminal field is not included in kwargs,
-        # so it defaults to DontUpdate sentinel (not None)
-        assert isinstance(upd.terminal, DontUpdate)
+        assert upd.host == "10.0.0.1"
+        # terminal should not be set when update_passwords=False
+        assert isinstance(upd.terminal, DontUpdateType)
 
-    def test_with_password_update(self, make_device: Any) -> None:
-        device = make_device("r2.example.com", "10.2.2.2")
-        upd = catc_sync.build_update_device(
+    def test_includes_password_when_flag_true(self, make_device: Any) -> None:
+        device = make_device("r2.example.com", "10.0.0.2")
+        config = AppConfig()
+        upd = build_update_device(
             device=device,
             catc_hostname="catc1.example.com",
             existing_uuid=str(uuid4()),
             update_passwords=True,
             ssh_user="netops",
-            ssh_password="newsecret",  # noqa: S106
+            ssh_password="secret",  # noqa: S106
+            metadata_fields=config.metadata_fields,
+            meta_source_key=config.meta_source_key,
         )
         assert upd.terminal is not None
         assert upd.terminal.username == "netops"

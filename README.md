@@ -14,7 +14,7 @@ Synchronise Cisco Catalyst Center (formerly DNA Center) device inventory into a 
 - `--dry-run` mode to preview all changes before applying them
 - `--adopt-existing` to take ownership of manually-added RADKit devices
 - `--update-passwords` to refresh SSH credentials on existing devices
-- Auto-loads `.env` and `catc_sync.toml` from the script directory or current working directory
+- Loads `.env` and `catc_sync.toml` from the current working directory
 
 ## Requirements
 
@@ -24,10 +24,23 @@ Synchronise Cisco Catalyst Center (formerly DNA Center) device inventory into a 
 
 ## Installation
 
-### With uv (recommended)
+### With uv (Recommended)
 
-[uv](https://docs.astral.sh/uv/) automatically picks up the Cisco RADKit index from `pyproject.toml`
-(`[tool.uv].extra-index-url`), so no extra flags are needed:
+[uv](https://docs.astral.sh/uv/) is the fastest way to install, with automatic PyPI index handling:
+
+```bash
+uv tool install git+https://github.com/oboehmer/RADKit-CatC-Sync.git
+```
+
+This installs the latest version directly from GitHub into an isolated environment and makes the `catc-sync` command available in your PATH.
+
+To use a specific branch:
+
+```bash
+uv tool install git+https://github.com/oboehmer/RADKit-CatC-Sync.git@branch-name
+```
+
+### From a local clone
 
 ```bash
 git clone https://github.com/oboehmer/RADKit-CatC-Sync.git
@@ -35,27 +48,21 @@ cd RADKit-CatC-Sync
 uv pip install -e .
 ```
 
-Or install directly without cloning:
-
-```bash
-uv pip install git+https://github.com/oboehmer/RADKit-CatC-Sync.git
-```
-
 ### With pip
 
 pip does not read `[tool.uv]`, so the RADKit index must be passed explicitly:
 
 ```bash
+pip install --extra-index-url https://radkit.cisco.com/pip \
+    git+https://github.com/oboehmer/RADKit-CatC-Sync.git
+```
+
+Or from a local clone:
+
+```bash
 git clone https://github.com/oboehmer/RADKit-CatC-Sync.git
 cd RADKit-CatC-Sync
 pip install --extra-index-url https://radkit.cisco.com/pip -e .
-```
-
-Or directly:
-
-```bash
-pip install --extra-index-url https://radkit.cisco.com/pip \
-    git+https://github.com/oboehmer/RADKit-CatC-Sync.git
 ```
 
 ## Configuration
@@ -76,79 +83,99 @@ clusters = [
     "https://catc1.example.com",
     "https://catc2.example.com",
 ]
-user = "admin"          # optional (can also use CATC_USER env var)
+# Optional: provide username here (env var takes precedence)
+# user = "admin"
 
 [radkit]
-# base_url = "https://localhost:8081/api/v1"   # default
-admin_user = "superadmin"   # optional (can also use RADKIT_ADMIN_USER env var)
-ssh_user = "netops"         # optional (can also use RADKIT_SSH_USER env var)
+# Optional: override default RADKit ControlAPI URL
+# base_url = "https://localhost:8081/api/v1"
+
+# Optional: provide usernames here (env vars take precedence)
+# admin_user = "superadmin"
+# ssh_user = "netops"
 
 [filters]
+# Regex patterns applied to raw CatC hostnames (optional)
 whitelist = []              # e.g. ["^router-", "^sw-"]
 blacklist = []              # e.g. ["\\.lab\\.", "^test"]
+
+[metadata]
+# Optional: customize metadata handling
+# source_key = "catc_source"    # ownership marker in device metadata
+# fields = ["hostname", "serialNumber"]  # CatC fields to sync as metadata
 ```
 
-See `catc_sync.toml.example` for all available options with documentation.
+See `catc_sync.toml.example` for complete documentation and defaults.
 
-By default the script looks for `catc_sync.toml` next to the script, then in the current working directory. Use `-c` / `--config` to specify a different path.
+**Config file search order** (first found is used):
+1. Explicit path via `-c` / `--config` flag
+2. `CATC_SYNC_CONFIG` environment variable
+3. `./catc_sync.toml` (current working directory)
+4. Built-in defaults if no file found
 
 ### 2. Set passwords via environment variables
 
-Passwords must be provided via environment variables (or a `.env` file). The script loads `.env` from the script directory and the current working directory — in that order. Later files only fill in variables not already set. Usernames can also be set here — environment variables take precedence over config file values.
+Passwords **must** be provided via environment variables (never in config files). The script can load them from a `.env` file in the current working directory:
 
 ```dotenv
-CATC_PASSWORD=secret
-RADKIT_ADMIN_PASSWORD=secret
-RADKIT_SSH_PASSWORD=secret
+CATC_PASSWORD=your_catc_password
+RADKIT_ADMIN_PASSWORD=your_radkit_admin_password
+RADKIT_SSH_PASSWORD=your_ssh_password
 ```
 
 | Variable | Description | Required |
 |---|---|---|
-| `CATC_USER` | Catalyst Center username | If not in config file |
-| `CATC_PASSWORD` | Catalyst Center password | Always |
-| `RADKIT_ADMIN_USER` | RADKit ControlAPI admin username | If not in config file |
-| `RADKIT_ADMIN_PASSWORD` | RADKit ControlAPI admin password | Always |
-| `RADKIT_SSH_USER` | SSH username for imported devices | If not in config file |
-| `RADKIT_SSH_PASSWORD` | SSH password for imported devices | Always |
+| `CATC_USER` | Catalyst Center username | If not in `catc_sync.toml` |
+| `CATC_PASSWORD` | Catalyst Center password | Always (env only) |
+| `RADKIT_ADMIN_USER` | RADKit ControlAPI admin username | If not in `catc_sync.toml` |
+| `RADKIT_ADMIN_PASSWORD` | RADKit ControlAPI admin password | Always (env only) |
+| `RADKIT_SSH_USER` | SSH username for imported devices | If not in `catc_sync.toml` |
+| `RADKIT_SSH_PASSWORD` | SSH password for imported devices | Always (env only) |
+
+**Precedence:**
+1. Environment variables (from `os.environ` or `.env` file)
+2. Non-sensitive values from `catc_sync.toml` (usernames only)
+3. Built-in defaults
 
 ## Usage
 
-```
-catc-sync [-c CONFIG] [--dry-run] [--update-passwords] [--adopt-existing] [-k] [-v]
-```
-
-Or run directly:
-
 ```bash
-python catc_sync.py [options]
+catc-sync [OPTIONS]
 ```
 
 ### Options
 
 | Flag | Short | Description |
 |---|---|---|
-| `--config FILE` | `-c` | Path to TOML config file (default: `catc_sync.toml` next to script, then cwd) |
+| `--config FILE` | `-c` | Path to TOML config file |
 | `--dry-run` | | Preview all changes without applying them |
 | `--update-passwords` | | Overwrite SSH password on existing managed devices |
-| `--adopt-existing` | `-A` | Take ownership of unmanaged RADKit devices that match a CatC device name |
-| `--no-verify-tls` | `-k` | Disable TLS certificate verification for Catalyst Center connections |
-| `--verbose` | `-v` | Enable debug logging |
+| `--adopt-existing` | `-A` | Take ownership of unmanaged RADKit devices matching CatC names |
+| `--no-verify-tls` | `-k` | Disable TLS certificate verification for Catalyst Center |
+| `--verbose` | `-v` | Enable debug-level logging |
+| `--help` | `-h` | Show help message |
 
 ### Examples
 
 ```bash
-# Preview what would happen
+# Preview what would happen (safe, read-only)
 catc-sync --dry-run
 
 # Normal sync
 catc-sync
 
-# Sync and refresh SSH passwords
+# Sync and refresh SSH passwords on existing devices
 catc-sync --update-passwords
 
 # Take over manually-added devices that now exist in CatC
-catc-sync --adopt-existing --dry-run
-catc-sync --adopt-existing
+catc-sync --adopt-existing --dry-run    # preview first
+catc-sync --adopt-existing              # apply
+
+# Use a specific config file
+catc-sync -c /etc/radkit/catc_sync.toml
+
+# Debug mode with verbose logging
+catc-sync --verbose --dry-run
 ```
 
 ### Example output
@@ -162,45 +189,135 @@ catc-sync --adopt-existing
 12:34:05 INFO     Fetched 280 devices from CatC catc2.example.com
 12:34:05 INFO     Total importable devices across all clusters: 585
 12:34:05 INFO     Devices to add (or adopt): 543
-12:34:05 INFO     Devices to update: 42
-12:34:05 INFO     Devices to delete: 3
+12:34:05 INFO     Devices to check for updates: 42
+12:34:05 INFO     Devices to delete: 0
 
 --- Sync Summary ---
-  Added:    543
-  Updated:  42
-  Adopted:  0  (existing unmanaged devices taken over)
-  Deleted:  3
-  Skipped:  12
-  Errors:   0
+  Added:           543
+  Updated:         42
+  Unchanged:       0
+  Adopted:         0  (existing unmanaged devices taken over)
+  Deleted:         0
+  Skipped:         12
+  Errors:          0
 ```
 
 ## How ownership tracking works
 
-Every device imported by this script has a `catc_source` metadata field set to the Catalyst Center hostname (e.g. `catc1.example.com`). This field serves as the ownership marker:
+Every device imported by this script has a `catc_source` metadata field set to the Catalyst Center hostname (e.g., `catc1.example.com`). This field serves as the ownership marker:
 
-- A non-empty `catc_source` → managed by this script
-- Missing or empty `catc_source` → manually added, not touched by default
+- **Non-empty `catc_source`** → managed by this script
+- **Missing or empty `catc_source`** → manually added, not modified by default
 
 On each run, the script:
-1. Reads all RADKit devices and splits them into managed / unmanaged sets
-2. Fetches fresh inventory from all configured CatC clusters
-3. Adds devices new to RADKit, updates existing ones, deletes those no longer in CatC (or excluded by filters)
-4. Deletion is scoped — only removes a device if its `catc_source` matches one of the clusters synced this run
+
+1. Fetches all RADKit devices and splits them into managed (with `catc_source`) / unmanaged sets
+2. Fetches fresh inventory from all configured Catalyst Center clusters
+3. **Adds** devices new to RADKit
+4. **Updates** existing devices if IP, type, or metadata changed
+5. **Deletes** devices no longer in CatC (or excluded by filters)
+6. **Deletion scope** — only removes a device if its `catc_source` matches a cluster synced this run
+
+### Example: filter changes
+
+If you narrow your whitelist (e.g., to exclude lab devices), devices that no longer match are deleted from RADKit on the next sync. This is intentional — filters act as a device definition. Use `--dry-run` to preview before applying changes.
 
 ## Development
 
+### Setup
+
 ```bash
-# with uv (index picked up automatically)
+# Clone repository
+git clone https://github.com/oboehmer/RADKit-CatC-Sync.git
+cd RADKit-CatC-Sync
+
+# Install with dev dependencies (using uv)
 uv pip install -e ".[dev]"
 
-# with pip
+# Or with pip
 pip install --extra-index-url https://radkit.cisco.com/pip -e ".[dev]"
-
-ruff check catc_sync.py tests/
-ruff format catc_sync.py tests/
-mypy catc_sync.py
-pytest
 ```
+
+### Testing & linting
+
+```bash
+# Run tests
+pytest
+
+# Type check
+mypy radkit_catc_sync tests/
+
+# Lint and format
+ruff check radkit_catc_sync tests/
+ruff format radkit_catc_sync tests/
+```
+
+### Pre-commit hooks
+
+This repo ships a [`.pre-commit-config.yaml`](.pre-commit-config.yaml) that runs
+`ruff` (lint + format) and `mypy` automatically before each commit.
+
+The `mypy` hook uses `language: system` — it runs the `mypy` from your **active
+virtualenv**, so RADKit's types are checked against the real installed packages.
+Install the dev dependencies (which pull in RADKit) into that env first, and run
+`pre-commit` from the same activated environment:
+
+```bash
+# Install dev deps (incl. RADKit) into your active venv (once)
+uv pip install -e ".[dev]"
+
+# Install pre-commit (once)
+uv pip install pre-commit    # or: pipx install pre-commit
+
+# Enable the git hook in your clone (once)
+pre-commit install
+
+# Optional: run all hooks against the whole tree
+pre-commit run --all-files
+```
+
+Once installed, the hooks run on every `git commit` and block the commit if
+`ruff` or `mypy` report problems (ruff auto-fixes what it can). Because `mypy`
+type-checks against the installed RADKit packages, run commits from the
+RADKit-enabled environment.
+
+### Project structure
+
+```
+radkit_catc_sync/
+  __init__.py         # Package entry point and public API
+  __main__.py         # python -m radkit_catc_sync support
+  cli.py              # Command-line interface and argument parsing
+  config.py           # Configuration loading and validation
+  models.py           # Data models (CatCDevice, StoredRadkitDevice)
+  filters.py          # Device name filtering (FilterSet class)
+  catc_client.py      # Catalyst Center HTTP client
+  builders.py         # RADKit device model builders
+  stats.py            # Statistics tracking
+  sync.py             # Core sync logic and reconciliation
+tests/
+  conftest.py         # Shared test fixtures
+  test_*.py           # Test suites by module
+```
+
+Each module has a clear responsibility:
+- **config.py** — Load and validate settings (immutable `AppConfig` dataclass)
+- **filters.py** — Regex-based device name matching (`FilterSet` class)
+- **models.py** — Type-safe data structures
+- **sync.py** — Core orchestration logic
+- **cli.py** — User interaction and I/O
+- **catc_client.py**, **builders.py**, **stats.py** — Supporting utilities
+
+## Architecture notes
+
+This project was refactored in v0.2.0 to move from a monolithic 1000-line script to a modular package:
+
+- **Immutable configuration** via `AppConfig` dataclass (no module globals)
+- **Type-safe models** instead of stringly-typed dicts
+- **Dependency injection** makes testing easier
+- **Clear module boundaries** aid maintainability and future expansion
+
+For details, see the [refactoring notes](docs/REFACTORING.md) *(when available)*.
 
 ## License
 

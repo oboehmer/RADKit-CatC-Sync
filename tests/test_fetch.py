@@ -6,7 +6,17 @@ from typing import Any
 from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
-import catc_sync
+import pytest
+
+from radkit_catc_sync.catc_client import CatCClient
+from radkit_catc_sync.config import AppConfig
+from radkit_catc_sync.filters import FilterSet
+from radkit_catc_sync.stats import Stats
+from radkit_catc_sync.sync import (
+    CatCInventoryError,
+    fetch_fresh_inventory,
+    fetch_radkit_devices,
+)
 
 # ---------------------------------------------------------------------------
 # fetch_radkit_devices
@@ -33,22 +43,25 @@ class TestFetchRadkitDevices:
         uid = str(uuid4())
         dev = self._make_stored_device("router1", uid, {"catc_source": "catc1.example.com"})
         api = self._make_api([dev])
-        managed, unmanaged = catc_sync.fetch_radkit_devices(api)
+        config = AppConfig()
+        managed, unmanaged = fetch_radkit_devices(api, config)
         assert "router1" in managed
-        assert managed["router1"]["catc_source"] == "catc1.example.com"
+        assert managed["router1"].catc_source == "catc1.example.com"
         assert "router1" not in unmanaged
 
     def test_unmanaged_device_has_no_catc_source(self) -> None:
         dev = self._make_stored_device("switch1", str(uuid4()), {})
         api = self._make_api([dev])
-        managed, unmanaged = catc_sync.fetch_radkit_devices(api)
+        config = AppConfig()
+        managed, unmanaged = fetch_radkit_devices(api, config)
         assert "switch1" in unmanaged
         assert "switch1" not in managed
 
     def test_empty_catc_source_is_unmanaged(self) -> None:
         dev = self._make_stored_device("switch2", str(uuid4()), {"catc_source": ""})
         api = self._make_api([dev])
-        managed, unmanaged = catc_sync.fetch_radkit_devices(api)
+        config = AppConfig()
+        managed, unmanaged = fetch_radkit_devices(api, config)
         assert "switch2" in unmanaged
         assert "switch2" not in managed
 
@@ -59,13 +72,15 @@ class TestFetchRadkitDevices:
             self._make_stored_device("r3", str(uuid4()), {"catc_source": "catc2.example.com"}),
         ]
         api = self._make_api(devices)
-        managed, unmanaged = catc_sync.fetch_radkit_devices(api)
+        config = AppConfig()
+        managed, unmanaged = fetch_radkit_devices(api, config)
         assert set(managed.keys()) == {"r1", "r3"}
         assert set(unmanaged.keys()) == {"r2"}
 
     def test_empty_inventory(self) -> None:
         api = self._make_api([])
-        managed, unmanaged = catc_sync.fetch_radkit_devices(api)
+        config = AppConfig()
+        managed, unmanaged = fetch_radkit_devices(api, config)
         assert managed == {}
         assert unmanaged == {}
 
@@ -78,16 +93,24 @@ class TestFetchRadkitDevices:
 class TestFetchFreshInventory:
     def test_normal_device_collected(self, make_device: Any) -> None:
         device = make_device("router1.example.com", "10.0.0.1")
-        catc_sync.CATC_CLUSTERS = ["https://catc1.example.com"]
-        catc_sync.compile_filters()
-        stats = catc_sync.Stats()
+        config = AppConfig(
+            catc_clusters=["https://catc1.example.com"],
+            device_whitelist=[],
+            device_blacklist=[],
+        )
+        filters = FilterSet.from_lists([], [])
+        stats = Stats()
 
         with (
-            patch.object(catc_sync.CatCClient, "authenticate"),
-            patch.object(catc_sync.CatCClient, "get_devices", return_value=[device]),
+            patch.object(CatCClient, "authenticate"),
+            patch.object(CatCClient, "get_devices", return_value=[device]),
         ):
-            fresh_dict = catc_sync.fetch_fresh_inventory(
-                ["https://catc1.example.com"], "user", "pass", stats, verify_tls=True
+            fresh_dict = fetch_fresh_inventory(
+                config=config,
+                filters=filters,
+                catc_user="user",
+                catc_password="pass",
+                stats=stats,
             )
 
         assert "router1" in fresh_dict
@@ -98,15 +121,20 @@ class TestFetchFreshInventory:
     def test_hostname_none_skipped(self, make_device: Any) -> None:
         device = make_device(hostname="")
         device.hostname = None  # Override after creation
-        catc_sync.CATC_CLUSTERS = ["https://catc1.example.com"]
-        stats = catc_sync.Stats()
+        config = AppConfig(catc_clusters=["https://catc1.example.com"])
+        filters = FilterSet.from_lists(config.device_whitelist, config.device_blacklist)
+        stats = Stats()
 
         with (
-            patch.object(catc_sync.CatCClient, "authenticate"),
-            patch.object(catc_sync.CatCClient, "get_devices", return_value=[device]),
+            patch.object(CatCClient, "authenticate"),
+            patch.object(CatCClient, "get_devices", return_value=[device]),
         ):
-            fresh_dict = catc_sync.fetch_fresh_inventory(
-                ["https://catc1.example.com"], "user", "pass", stats, verify_tls=True
+            fresh_dict = fetch_fresh_inventory(
+                config=config,
+                filters=filters,
+                catc_user="user",
+                catc_password="pass",
+                stats=stats,
             )
 
         assert fresh_dict == {}
@@ -114,17 +142,23 @@ class TestFetchFreshInventory:
 
     def test_filtered_device_skipped(self, make_device: Any) -> None:
         device = make_device("sw-lab-01.example.com", "10.0.0.1")
-        catc_sync.CATC_CLUSTERS = ["https://catc1.example.com"]
-        catc_sync.DEVICE_BLACKLIST = [r"-lab-"]
-        catc_sync.compile_filters()
-        stats = catc_sync.Stats()
+        config = AppConfig(
+            catc_clusters=["https://catc1.example.com"],
+            device_blacklist=[r"-lab-"],
+        )
+        filters = FilterSet.from_lists(config.device_whitelist, config.device_blacklist)
+        stats = Stats()
 
         with (
-            patch.object(catc_sync.CatCClient, "authenticate"),
-            patch.object(catc_sync.CatCClient, "get_devices", return_value=[device]),
+            patch.object(CatCClient, "authenticate"),
+            patch.object(CatCClient, "get_devices", return_value=[device]),
         ):
-            fresh_dict = catc_sync.fetch_fresh_inventory(
-                ["https://catc1.example.com"], "user", "pass", stats, verify_tls=True
+            fresh_dict = fetch_fresh_inventory(
+                config=config,
+                filters=filters,
+                catc_user="user",
+                catc_password="pass",
+                stats=stats,
             )
 
         assert "sw-lab-01" not in fresh_dict
@@ -133,16 +167,20 @@ class TestFetchFreshInventory:
     def test_duplicate_same_cluster_warned(self, make_device: Any) -> None:
         device1 = make_device("router1.example.com", "10.0.0.1")
         device2 = make_device("router1.example.com", "10.0.0.2")
-        catc_sync.CATC_CLUSTERS = ["https://catc1.example.com"]
-        catc_sync.compile_filters()
-        stats = catc_sync.Stats()
+        config = AppConfig(catc_clusters=["https://catc1.example.com"])
+        filters = FilterSet.from_lists(config.device_whitelist, config.device_blacklist)
+        stats = Stats()
 
         with (
-            patch.object(catc_sync.CatCClient, "authenticate"),
-            patch.object(catc_sync.CatCClient, "get_devices", return_value=[device1, device2]),
+            patch.object(CatCClient, "authenticate"),
+            patch.object(CatCClient, "get_devices", return_value=[device1, device2]),
         ):
-            fresh_dict = catc_sync.fetch_fresh_inventory(
-                ["https://catc1.example.com"], "user", "pass", stats, verify_tls=True
+            fresh_dict = fetch_fresh_inventory(
+                config=config,
+                filters=filters,
+                catc_user="user",
+                catc_password="pass",
+                stats=stats,
             )
 
         # Only one should be in fresh_dict
@@ -153,16 +191,20 @@ class TestFetchFreshInventory:
     def test_normalisation_collision_warned(self, make_device: Any) -> None:
         device1 = make_device("sw_core.example.com", "10.0.0.1")
         device2 = make_device("sw-core.example.com", "10.0.0.2")
-        catc_sync.CATC_CLUSTERS = ["https://catc1.example.com"]
-        catc_sync.compile_filters()
-        stats = catc_sync.Stats()
+        config = AppConfig(catc_clusters=["https://catc1.example.com"])
+        filters = FilterSet.from_lists(config.device_whitelist, config.device_blacklist)
+        stats = Stats()
 
         with (
-            patch.object(catc_sync.CatCClient, "authenticate"),
-            patch.object(catc_sync.CatCClient, "get_devices", return_value=[device1, device2]),
+            patch.object(CatCClient, "authenticate"),
+            patch.object(CatCClient, "get_devices", return_value=[device1, device2]),
         ):
-            fresh_dict = catc_sync.fetch_fresh_inventory(
-                ["https://catc1.example.com"], "user", "pass", stats, verify_tls=True
+            fresh_dict = fetch_fresh_inventory(
+                config=config,
+                filters=filters,
+                catc_user="user",
+                catc_password="pass",
+                stats=stats,
             )
 
         # Both normalise to "sw-core"
@@ -172,59 +214,60 @@ class TestFetchFreshInventory:
     def test_cross_cluster_collision_warned(self, make_device: Any) -> None:
         device1 = make_device("router1.a.example.com", "10.0.0.1")
         device2 = make_device("router1.b.example.com", "10.0.0.2")
-        catc_sync.CATC_CLUSTERS = ["https://catc1.example.com", "https://catc2.example.com"]
-        catc_sync.compile_filters()
-        stats = catc_sync.Stats()
+        config = AppConfig(catc_clusters=["https://catc1.example.com", "https://catc2.example.com"])
+        filters = FilterSet.from_lists(config.device_whitelist, config.device_blacklist)
+        stats = Stats()
 
         with (
-            patch.object(catc_sync.CatCClient, "authenticate"),
+            patch.object(CatCClient, "authenticate"),
             patch.object(
-                catc_sync.CatCClient,
+                CatCClient,
                 "get_devices",
                 side_effect=[[device1], [device2]],
             ),
         ):
-            fresh_dict = catc_sync.fetch_fresh_inventory(
-                ["https://catc1.example.com", "https://catc2.example.com"],
-                "user",
-                "pass",
-                stats,
-                verify_tls=True,
+            fresh_dict = fetch_fresh_inventory(
+                config=config,
+                filters=filters,
+                catc_user="user",
+                catc_password="pass",
+                stats=stats,
             )
 
         # Both normalise to "router1"
         assert len(fresh_dict) == 1
         assert any("collision" in w and "catc" in w.lower() for w in stats.warnings)
 
-    def test_cluster_fetch_failure_continues(self, make_device: Any) -> None:
+    def test_cluster_fetch_failure_aborts(self, make_device: Any) -> None:
+        """A cluster fetch failure must abort the whole sync, not continue.
+
+        Proceeding with a partial/empty inventory would let Step 5 delete
+        managed devices that are merely unreachable.
+        """
         device = make_device("router2.example.com", "10.0.0.2")
-        catc_sync.CATC_CLUSTERS = ["https://catc1.example.com", "https://catc2.example.com"]
-        catc_sync.compile_filters()
-        stats = catc_sync.Stats()
+        config = AppConfig(catc_clusters=["https://catc1.example.com", "https://catc2.example.com"])
+        filters = FilterSet.from_lists(config.device_whitelist, config.device_blacklist)
+        stats = Stats()
 
         def auth_side_effect(self: Any) -> None:
             if "catc1" in self.base_url:
                 raise RuntimeError("Connection failed")
-            # catc2 succeeds
+            # catc2 would succeed, but we should never reach it
 
         with (
             patch.object(
-                catc_sync.CatCClient,
+                CatCClient,
                 "authenticate",
                 side_effect=auth_side_effect,
                 autospec=True,
             ),
-            patch.object(catc_sync.CatCClient, "get_devices", return_value=[device]),
+            patch.object(CatCClient, "get_devices", return_value=[device]),
+            pytest.raises(CatCInventoryError, match="catc1"),
         ):
-            fresh_dict = catc_sync.fetch_fresh_inventory(
-                ["https://catc1.example.com", "https://catc2.example.com"],
-                "user",
-                "pass",
-                stats,
-                verify_tls=True,
+            fetch_fresh_inventory(
+                config=config,
+                filters=filters,
+                catc_user="user",
+                catc_password="pass",
+                stats=stats,
             )
-
-        # catc2 should still succeed
-        assert "router2" in fresh_dict
-        assert stats.errors == 1
-        assert any("catc1" in w.lower() for w in stats.warnings)
