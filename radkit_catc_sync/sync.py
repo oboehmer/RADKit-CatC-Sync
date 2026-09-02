@@ -257,8 +257,7 @@ def run_sync(
                         f"Skipping '{name}': already exists in RADKit as an unmanaged "
                         f"device. Use --adopt-existing (-A) to take ownership."
                     )
-                    logger.warning(msg)
-                    stats.warnings.append(msg)
+                    logger.debug(msg)
                     stats.skipped += 1
                     continue
                 existing_uuid = unmanaged[name].uuid
