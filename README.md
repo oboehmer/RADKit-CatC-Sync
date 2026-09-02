@@ -245,12 +245,41 @@ pip install --extra-index-url https://radkit.cisco.com/pip -e ".[dev]"
 pytest
 
 # Type check
-mypy radkit_catc_sync
+mypy radkit_catc_sync tests/
 
 # Lint and format
 ruff check radkit_catc_sync tests/
 ruff format radkit_catc_sync tests/
 ```
+
+### Pre-commit hooks
+
+This repo ships a [`.pre-commit-config.yaml`](.pre-commit-config.yaml) that runs
+`ruff` (lint + format) and `mypy` automatically before each commit.
+
+The `mypy` hook uses `language: system` — it runs the `mypy` from your **active
+virtualenv**, so RADKit's types are checked against the real installed packages.
+Install the dev dependencies (which pull in RADKit) into that env first, and run
+`pre-commit` from the same activated environment:
+
+```bash
+# Install dev deps (incl. RADKit) into your active venv (once)
+uv pip install -e ".[dev]"
+
+# Install pre-commit (once)
+uv pip install pre-commit    # or: pipx install pre-commit
+
+# Enable the git hook in your clone (once)
+pre-commit install
+
+# Optional: run all hooks against the whole tree
+pre-commit run --all-files
+```
+
+Once installed, the hooks run on every `git commit` and block the commit if
+`ruff` or `mypy` report problems (ruff auto-fixes what it can). Because `mypy`
+type-checks against the installed RADKit packages, run commits from the
+RADKit-enabled environment.
 
 ### Project structure
 

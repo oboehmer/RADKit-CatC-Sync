@@ -135,9 +135,7 @@ def load_config(config_path: Path | None) -> AppConfig:
     meta_source_key = meta.get("source_key", "catc_source")
     metadata_fields_list = meta.get("fields")
     metadata_fields = (
-        frozenset(metadata_fields_list)
-        if metadata_fields_list
-        else AppConfig().metadata_fields
+        frozenset(metadata_fields_list) if metadata_fields_list else AppConfig().metadata_fields
     )
 
     # Parse [sync] section

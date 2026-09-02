@@ -1,0 +1,30 @@
+# Pre-commit hooks for radkit-catc-sync.
+# Install:  uv pip install pre-commit  (or: pipx install pre-commit)
+#           pre-commit install
+# Run all:  pre-commit run --all-files
+#
+# NOTE: the mypy hook runs with `language: system`, i.e. it uses the `mypy`
+# from your ACTIVE virtualenv. Run pre-commit from the same env where the
+# RADKit packages (and dev deps) are installed:
+#     uv pip install -e ".[dev]"
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.6.9
+    hooks:
+      # Lint (with autofix), then format.
+      - id: ruff
+        args: [--fix]
+      - id: ruff-format
+
+  - repo: local
+    hooks:
+      - id: mypy
+        name: mypy (system env with RADKit installed)
+        entry: mypy
+        language: system
+        types: [python]
+        # Type-check the package and tests. RADKit is the primary dependency
+        # and must be importable in the active env for this to be meaningful.
+        files: ^(radkit_catc_sync|tests)/
+        pass_filenames: false
+        args: ["radkit_catc_sync/", "tests/"]

@@ -214,9 +214,7 @@ class TestFetchFreshInventory:
     def test_cross_cluster_collision_warned(self, make_device: Any) -> None:
         device1 = make_device("router1.a.example.com", "10.0.0.1")
         device2 = make_device("router1.b.example.com", "10.0.0.2")
-        config = AppConfig(
-            catc_clusters=["https://catc1.example.com", "https://catc2.example.com"]
-        )
+        config = AppConfig(catc_clusters=["https://catc1.example.com", "https://catc2.example.com"])
         filters = FilterSet.from_lists(config.device_whitelist, config.device_blacklist)
         stats = Stats()
 
@@ -247,9 +245,7 @@ class TestFetchFreshInventory:
         managed devices that are merely unreachable.
         """
         device = make_device("router2.example.com", "10.0.0.2")
-        config = AppConfig(
-            catc_clusters=["https://catc1.example.com", "https://catc2.example.com"]
-        )
+        config = AppConfig(catc_clusters=["https://catc1.example.com", "https://catc2.example.com"])
         filters = FilterSet.from_lists(config.device_whitelist, config.device_blacklist)
         stats = Stats()
 

@@ -143,9 +143,7 @@ def main() -> int:
         )
     except CatCInventoryError as exc:
         logger.error("Aborting sync: %s", exc)
-        logger.error(
-            "No changes were made. Fix CatC connectivity/credentials and retry."
-        )
+        logger.error("No changes were made. Fix CatC connectivity/credentials and retry.")
         return 1
     except ValueError as exc:
         logger.error("%s", exc)

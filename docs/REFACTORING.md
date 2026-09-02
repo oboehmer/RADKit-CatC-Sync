@@ -93,9 +93,10 @@ managed_devices[name]["catc_source"]
 **After:** Type-safe models with clear interfaces:
 ```python
 from radkit_catc_sync import StoredRadkitDevice
+
 stored: StoredRadkitDevice
-stored.uuid        # Type: str
-stored.catc_source # Type: str
+stored.uuid  # Type: str
+stored.catc_source  # Type: str
 ```
 
 ### 5. **Dependency Injection**

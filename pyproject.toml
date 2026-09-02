@@ -68,14 +68,18 @@ ignore = [
 [tool.mypy]
 python_version = "3.11"
 strict = true
-# radkit_service and radkit_common are only available in the RADKit runtime
-# environment and have no published stubs — silence import errors for them.
-[[tool.mypy.overrides]]
-module = [
-    "radkit_common.*",
-    "radkit_service.*",
-]
-ignore_missing_imports = true
+# NOTE: mypy must be run in an environment where the RADKit packages
+# (radkit_service, radkit_common) are installed — they are the primary
+# dependency and the integration surface we most need type-checked.
+# CI installs them from Cisco's private index; the pre-commit mypy hook
+# runs with `language: system` so it uses the active (RADKit-enabled) venv.
+#
+# Both RADKit packages ship a py.typed marker, so mypy checks our code against
+# their real types (no ignore_missing_imports needed). The only exceptions are
+# two symbols (radkit_common.utils.b64encode and
+# radkit_service...connectors.utils.dict_to_metadata) that are re-exported
+# dynamically and thus not statically visible; those two import lines carry a
+# targeted `# type: ignore[attr-defined]`.
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
