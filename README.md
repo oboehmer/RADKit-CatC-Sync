@@ -41,7 +41,7 @@ RADKit-Service's built-in sync mechanism.
 [uv](https://docs.astral.sh/uv/) is the fastest way to install, with automatic PyPI index handling:
 
 ```bash
-uv tool install git+https://github.com/oboehmer/RADKit-CatC-Sync.git
+uv tool install --extra-index-url=https://radkit.cisco.com/pip git+https://github.com/oboehmer/RADKit-CatC-Sync.git
 ```
 
 This installs the latest version directly from GitHub into an isolated environment and makes the `catc-sync` command available in your PATH.
@@ -49,7 +49,7 @@ This installs the latest version directly from GitHub into an isolated environme
 To use a specific branch:
 
 ```bash
-uv tool install git+https://github.com/oboehmer/RADKit-CatC-Sync.git@branch-name
+uv tool install --extra-index-url=https://radkit.cisco.com/pip git+https://github.com/oboehmer/RADKit-CatC-Sync.git@branch-name
 ```
 
 ### From a local clone
@@ -74,7 +74,7 @@ Or from a local clone:
 ```bash
 git clone https://github.com/oboehmer/RADKit-CatC-Sync.git
 cd RADKit-CatC-Sync
-pip install --extra-index-url https://radkit.cisco.com/pip -e .
+pip install --extra-index-url=https://radkit.cisco.com/pip -e .
 ```
 
 ## Configuration
