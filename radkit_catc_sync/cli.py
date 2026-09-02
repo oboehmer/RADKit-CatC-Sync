@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import dataclasses
+import importlib.resources
 import logging
 import sys
 from pathlib import Path
@@ -35,6 +36,54 @@ def setup_logging(verbose: bool) -> None:
         logging.getLogger("httpx").setLevel(logging.WARNING)
 
 
+def init_config(output_path: Path | None = None) -> int:
+    """
+    Generate a config file from the bundled template.
+
+    Args:
+        output_path: Path where to write the config file. Defaults to ./catc_sync.toml
+
+    Returns:
+        Exit code (0 for success, 1 for errors).
+    """
+    if output_path is None:
+        output_path = Path.cwd() / "catc_sync.toml"
+
+    # Check if file already exists
+    if output_path.exists():
+        print(f"Error: {output_path} already exists.")
+        print("To regenerate, (re)move it first.")
+        return 1
+
+    # Load the bundled example template
+    try:
+        # Use importlib.resources to load the bundled file (Python 3.9+ API)
+        files = importlib.resources.files("radkit_catc_sync")
+        example_content = (files / ".." / "catc_sync.toml.example").read_text()
+    except (FileNotFoundError, IsADirectoryError, UnicodeDecodeError) as e:
+        logger.error(f"Could not find bundled template: {e}")
+        print("Hint: You can download the template from:")
+        print(
+            "  https://raw.githubusercontent.com/oboehmer/RADKit-CatC-Sync/main/catc_sync.toml.example"
+        )
+        return 1
+
+    # Write the config file
+    try:
+        output_path.write_text(example_content)
+        print(f"✓ Created {output_path}")
+        print()
+        print("Next steps:")
+        print(f"  1. Edit {output_path} and adapt to your environment")
+        print("  2. Create a .env file with your credentials (CATC_PASSWORD, etc.)")
+        print("  3. Run 'catc-sync --dry-run' to preview the sync")
+        print()
+        return 0
+    except OSError as e:
+        logger.error(f"Could not write config file: {e}")
+        return 1
+
+
 def main() -> int:
     """
     Main entry point for radkit-catc-sync CLI.
@@ -57,7 +106,13 @@ def main() -> int:
             "Config file (TOML format):\n"
             "  Specify with -c/--config or CATC_SYNC_CONFIG env var, "
             "or place catc_sync.toml in cwd.\n"
+            "  Use --init to generate a template.\n"
         ),
+    )
+    parser.add_argument(
+        "--init",
+        action="store_true",
+        help="Generate a catc_sync.toml template in the current directory and exit.",
     )
     parser.add_argument(
         "-c",
@@ -107,6 +162,26 @@ def main() -> int:
     args = parser.parse_args()
 
     setup_logging(args.verbose)
+
+    # Handle --init (generate template and exit early)
+    if args.init:
+        # --init doesn't accept other arguments
+        if args.config is not None:
+            logger.error("--init cannot be used with -c/--config")
+            return 1
+        if args.dry_run:
+            logger.error("--init cannot be used with --dry-run")
+            return 1
+        if args.update_passwords:
+            logger.error("--init cannot be used with --update-passwords")
+            return 1
+        if args.adopt_existing:
+            logger.error("--init cannot be used with -A/--adopt-existing")
+            return 1
+        if args.no_verify_tls:
+            logger.error("--init cannot be used with -k/--no-verify-tls")
+            return 1
+        return init_config()
 
     # Load configuration from TOML file
     try:

@@ -49,6 +49,9 @@ Issues = "https://github.com/oboehmer/RADKit-CatC-Sync/issues"
 
 [tool.hatch.build.targets.wheel]
 packages = ["radkit_catc_sync"]
+include = [
+    { path = "catc_sync.toml.example" },
+]
 
 [tool.uv]
 # RADKit packages are hosted on Cisco's private PyPI index.

@@ -79,15 +79,19 @@ pip install --extra-index-url=https://radkit.cisco.com/pip -e .
 
 ## Configuration
 
-### 1. Create a config file
+### 1. Generate a config template
 
-Copy the example and edit it for your environment:
+The easiest way to get started is to use the `--init` flag, which generates a template in your current directory:
 
 ```bash
-cp catc_sync.toml.example catc_sync.toml
+catc-sync --init
 ```
 
-At minimum, add your Catalyst Center cluster URLs:
+This creates `catc_sync.toml` with all available options documented. Edit it for your environment and you're ready to go.
+
+### 2. Edit the config file manually
+
+If you prefer to create the config file yourself:
 
 ```toml
 [catc]
@@ -95,16 +99,10 @@ clusters = [
     "https://catc1.example.com",
     "https://catc2.example.com",
 ]
-# Optional: provide username here (env var takes precedence)
-# user = "admin"
 
 [radkit]
 # Optional: override default RADKit ControlAPI URL
 # base_url = "https://localhost:8081/api/v1"
-
-# Optional: provide usernames here (env vars take precedence)
-# admin_user = "superadmin"
-# ssh_user = "netops"
 
 [filters]
 # Regex patterns applied to raw CatC hostnames (optional)
@@ -117,7 +115,12 @@ blacklist = []              # e.g. ["\\.lab\\.", "^test"]
 # fields = ["hostname", "serialNumber"]  # CatC fields to sync as metadata
 ```
 
-See `catc_sync.toml.example` for complete documentation and defaults.
+See `catc_sync.toml.example` for complete documentation and defaults. You can also download it from GitHub if needed:
+
+```bash
+curl -o catc_sync.toml.example \
+  https://raw.githubusercontent.com/oboehmer/RADKit-CatC-Sync/main/catc_sync.toml.example
+```
 
 **Config file search order** (first found is used):
 1. Explicit path via `-c` / `--config` flag
@@ -125,7 +128,7 @@ See `catc_sync.toml.example` for complete documentation and defaults.
 3. `./catc_sync.toml` (current working directory)
 4. Built-in defaults if no file found
 
-### 2. Set passwords via environment variables
+### 3. Set passwords via environment variables
 
 Passwords **must** be provided via environment variables (never in config files). The script can load them from a `.env` file in the current working directory:
 
@@ -159,6 +162,7 @@ catc-sync [OPTIONS]
 
 | Flag | Short | Description |
 |---|---|---|
+| `--init` | | Generate a catc_sync.toml template in the current directory |
 | `--config FILE` | `-c` | Path to TOML config file |
 | `--dry-run` | | Preview all changes without applying them |
 | `--update-passwords` | | Overwrite SSH password on existing managed devices |
@@ -170,6 +174,9 @@ catc-sync [OPTIONS]
 ### Examples
 
 ```bash
+# Generate a config template
+catc-sync --init
+
 # Preview what would happen (safe, read-only)
 catc-sync --dry-run
 

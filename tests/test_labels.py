@@ -7,16 +7,14 @@ from typing import Any
 from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
-import pytest
+from radkit_service.webserver.models.base import APIResult, Ok
+from radkit_service.webserver.models.labels import StoredLabel
 
 from radkit_catc_sync import AppConfig
 from radkit_catc_sync.builders import build_new_device, build_update_device
 from radkit_catc_sync.config import load_config
 from radkit_catc_sync.models import StoredRadkitDevice
 from radkit_catc_sync.sync import ensure_labels_exist
-from radkit_service.webserver.models.base import APIResult, Ok
-from radkit_service.webserver.models.labels import StoredLabel
-
 
 # ---------------------------------------------------------------------------
 # Config loading tests
@@ -415,7 +413,7 @@ class TestStoredRadkitDeviceLabels:
         """Test the label missing computation logic."""
         # Simulate label resolution
         label_config_ids = {"catc-managed": 1, "production": 2, "sr12345": 3}
-        configured_label_ids = {label_config_ids[name] for name in label_config_ids.keys()}
+        configured_label_ids = {label_config_ids[name] for name in label_config_ids}
 
         # Device has only ID 1
         device = StoredRadkitDevice(
