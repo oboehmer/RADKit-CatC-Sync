@@ -28,6 +28,12 @@ def setup_logging(verbose: bool) -> None:
     # Suppress urllib3 SSL warnings for self-signed certs
     logging.getLogger("urllib3").setLevel(logging.WARNING)
 
+    # httpx logs every request ("HTTP Request: POST ...") at INFO; the RADKit
+    # ControlAPI client uses httpx, which floods normal output. Keep it at
+    # WARNING unless the user asked for verbose (DEBUG) logging.
+    if not verbose:
+        logging.getLogger("httpx").setLevel(logging.WARNING)
+
 
 def main() -> int:
     """
