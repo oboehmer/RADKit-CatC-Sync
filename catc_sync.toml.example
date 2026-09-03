@@ -114,3 +114,9 @@ names = []
 # device (default: false).  When false, such conflicts are skipped with a
 # warning.  Can also be overridden per-run with the -A / --adopt-existing flag.
 # adopt_existing = false
+
+# Number of devices sent per bulk RADKit ControlAPI call when adding, updating,
+# or deleting devices (default: 500, max: 50000).  Larger batches mean fewer
+# round-trips (faster) but coarser per-batch error/progress logging.  Devices
+# are chunked into batches of this size.
+# batch_size = 500

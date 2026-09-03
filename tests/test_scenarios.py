@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any
 from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
@@ -80,6 +81,19 @@ class Scenario:
 
 _CLUSTER = "https://catc1.example.com"
 _CATC_HOSTNAME = "catc1.example.com"  # urlparse(_CLUSTER).hostname
+
+
+def _flatten_bulk_items(mock_method: MagicMock) -> list[Any]:
+    """Flatten the per-item payloads passed across all bulk-method calls.
+
+    Bulk methods (create_devices/update_devices/delete_devices) receive a single
+    list as their first positional arg; this collects every item across calls so
+    tests can assert on the total set of affected devices regardless of chunking.
+    """
+    items: list[Any] = []
+    for call in mock_method.call_args_list:
+        items.extend(call[0][0])
+    return items
 
 
 def _build_catc_devices(
@@ -443,74 +457,73 @@ def test_sync_scenario(scenario: Scenario, mock_controlapi: MagicMock) -> None:
 
     # Assert stat counters
     assert stats.added == scenario.exp_added, f"added: {stats.added} != {scenario.exp_added}"
-    assert (
-        stats.updated == scenario.exp_updated
-    ), f"updated: {stats.updated} != {scenario.exp_updated}"
-    assert (
-        stats.deleted == scenario.exp_deleted
-    ), f"deleted: {stats.deleted} != {scenario.exp_deleted}"
-    assert (
-        stats.adopted == scenario.exp_adopted
-    ), f"adopted: {stats.adopted} != {scenario.exp_adopted}"
-    assert (
-        stats.unchanged == scenario.exp_unchanged
-    ), f"unchanged: {stats.unchanged} != {scenario.exp_unchanged}"
-    assert (
-        stats.skipped == scenario.exp_skipped
-    ), f"skipped: {stats.skipped} != {scenario.exp_skipped}"
+    assert stats.updated == scenario.exp_updated, (
+        f"updated: {stats.updated} != {scenario.exp_updated}"
+    )
+    assert stats.deleted == scenario.exp_deleted, (
+        f"deleted: {stats.deleted} != {scenario.exp_deleted}"
+    )
+    assert stats.adopted == scenario.exp_adopted, (
+        f"adopted: {stats.adopted} != {scenario.exp_adopted}"
+    )
+    assert stats.unchanged == scenario.exp_unchanged, (
+        f"unchanged: {stats.unchanged} != {scenario.exp_unchanged}"
+    )
+    assert stats.skipped == scenario.exp_skipped, (
+        f"skipped: {stats.skipped} != {scenario.exp_skipped}"
+    )
     assert stats.errors == scenario.exp_errors, f"errors: {stats.errors} != {scenario.exp_errors}"
 
-    # Assert API call counts
-    assert mock_controlapi.create_device.call_count == scenario.exp_create_calls, (
-        f"create_device calls: {mock_controlapi.create_device.call_count} "
-        f"!= {scenario.exp_create_calls}"
+    # Assert bulk device counts (number of devices affected across bulk calls)
+    created_devs = _flatten_bulk_items(mock_controlapi.create_devices)
+    updated_devs = _flatten_bulk_items(mock_controlapi.update_devices)
+    deleted_items = _flatten_bulk_items(mock_controlapi.delete_devices)
+
+    assert len(created_devs) == scenario.exp_create_calls, (
+        f"created devices: {len(created_devs)} != {scenario.exp_create_calls}"
     )
-    assert mock_controlapi.update_device.call_count == scenario.exp_update_calls, (
-        f"update_device calls: {mock_controlapi.update_device.call_count} "
-        f"!= {scenario.exp_update_calls}"
+    assert len(updated_devs) == scenario.exp_update_calls, (
+        f"updated devices: {len(updated_devs)} != {scenario.exp_update_calls}"
     )
-    assert mock_controlapi.delete_device.call_count == scenario.exp_delete_calls, (
-        f"delete_device calls: {mock_controlapi.delete_device.call_count} "
-        f"!= {scenario.exp_delete_calls}"
+    assert len(deleted_items) == scenario.exp_delete_calls, (
+        f"deleted devices: {len(deleted_items)} != {scenario.exp_delete_calls}"
     )
 
     # --- Content verification ---
 
     # Verify created devices
     if scenario.exp_created_names is not None:
-        created_devs = [call[0][0] for call in mock_controlapi.create_device.call_args_list]
         actual_names = sorted(d.name for d in created_devs)
-        assert actual_names == sorted(
-            scenario.exp_created_names
-        ), f"created names: {actual_names} != {sorted(scenario.exp_created_names)}"
+        assert actual_names == sorted(scenario.exp_created_names), (
+            f"created names: {actual_names} != {sorted(scenario.exp_created_names)}"
+        )
         # All created devices must be enabled with correct description
         for d in created_devs:
             assert d.enabled is True, f"created device '{d.name}' not enabled"
-            assert (
-                "Imported from CatC:" in d.description
-            ), f"created device '{d.name}' missing description prefix"
+            assert "Imported from CatC:" in d.description, (
+                f"created device '{d.name}' missing description prefix"
+            )
 
     # Verify deleted devices (match UUIDs back to managed dict)
     if scenario.exp_deleted_names is not None:
-        deleted_uuids = {call[0][0] for call in mock_controlapi.delete_device.call_args_list}
+        deleted_uuids = {str(u) for u in deleted_items}
         expected_uuids = {managed[n].uuid for n in scenario.exp_deleted_names}
-        assert (
-            deleted_uuids == expected_uuids
-        ), f"deleted UUIDs don't match expected managed entries: {scenario.exp_deleted_names}"
+        assert deleted_uuids == expected_uuids, (
+            f"deleted UUIDs don't match expected managed entries: {scenario.exp_deleted_names}"
+        )
 
-    # Verify updated/adopted devices (both use update_device)
+    # Verify updated/adopted devices (both use update_devices)
     if scenario.exp_updated_names is not None or scenario.exp_adopted_names is not None:
-        updated_devs = [call[0][0] for call in mock_controlapi.update_device.call_args_list]
         updated_uuids = {str(u.uuid) for u in updated_devs}
 
         if scenario.exp_updated_names is not None:
             for name in scenario.exp_updated_names:
-                assert (
-                    managed[name].uuid in updated_uuids
-                ), f"managed device '{name}' UUID not found in update_device calls"
+                assert managed[name].uuid in updated_uuids, (
+                    f"managed device '{name}' UUID not found in update_devices calls"
+                )
 
         if scenario.exp_adopted_names is not None:
             for name in scenario.exp_adopted_names:
-                assert (
-                    unmanaged[name].uuid in updated_uuids
-                ), f"unmanaged device '{name}' UUID not found in update_device calls (adopt)"
+                assert unmanaged[name].uuid in updated_uuids, (
+                    f"unmanaged device '{name}' UUID not found in update_devices calls (adopt)"
+                )

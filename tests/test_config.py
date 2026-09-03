@@ -52,6 +52,15 @@ class TestLoadConfig:
         config = load_config(toml)
         assert config.adopt_existing is True
 
+    def test_batch_size_defaults_to_500(self) -> None:
+        assert AppConfig().batch_size == 500
+
+    def test_loads_batch_size(self, tmp_path: Path) -> None:
+        toml = tmp_path / "catc_sync.toml"
+        toml.write_text("[sync]\nbatch_size = 250\n")
+        config = load_config(toml)
+        assert config.batch_size == 250
+
     def test_loads_usernames_from_config(self, tmp_path: Path) -> None:
         toml = tmp_path / "catc_sync.toml"
         toml.write_text(

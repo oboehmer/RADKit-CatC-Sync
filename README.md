@@ -9,6 +9,8 @@ Synchronise Cisco Catalyst Center (formerly DNA Center) device inventory into a 
 - Tracks ownership via `catc_source` metadata — only manages what it imports
 - Deletion is scoped: only removes devices from clusters that were synced this run
 - Whitelist/blacklist regex filters on device names
+- Reports how many devices were fetched per cluster and why devices were ignored (blacklist, whitelist miss, no hostname, collisions, unmanaged)
+- Fetches CatC clusters and RADKit inventory in parallel, and applies add/update/delete changes via batched (bulk) ControlAPI calls for faster syncs
 - Narrowing filters removes previously-synced devices from RADKit (same as devices removed from CatC)
 - Cross-cluster hostname collision detection (first cluster wins, warning logged)
 - `--dry-run` mode to preview all changes before applying them
@@ -201,23 +203,28 @@ catc-sync --verbose --dry-run
 
 ```
 12:34:01 INFO     Connecting to RADKit ControlAPI at https://localhost:8081/api/v1
-12:34:01 INFO     Fetching existing devices from RADKit...
-12:34:01 INFO     Found 42 catc-managed and 3 unmanaged devices in RADKit
-12:34:01 INFO     Fetching inventory from 2 CatC cluster(s)...
+12:34:01 INFO     Fetching existing RADKit devices and inventory from 2 CatC cluster(s) in parallel...
 12:34:03 INFO     Fetched 310 devices from CatC catc1.example.com
-12:34:05 INFO     Fetched 280 devices from CatC catc2.example.com
-12:34:05 INFO     Total importable devices across all clusters: 585
-12:34:05 INFO     Devices to add (or adopt): 543
-12:34:05 INFO     Devices to check for updates: 42
-12:34:05 INFO     Devices to delete: 0
+12:34:03 INFO     Fetched 280 devices from CatC catc2.example.com
+12:34:03 INFO     Found 42 catc-managed and 3 unmanaged devices in RADKit
+12:34:03 INFO     Total importable devices across all clusters: 585
+12:34:03 INFO     Devices to add (or adopt): 543
+12:34:03 INFO     Devices to check for updates: 42
+12:34:03 INFO     Devices to delete: 0
 
 --- Sync Summary ---
+  Fetched:         590  (across 2 cluster(s))
+    catc1.example.com:  310
+    catc2.example.com:  280
   Added:           543
   Updated:         42
   Unchanged:       0
   Adopted:         0  (existing unmanaged devices taken over)
   Deleted:         0
-  Skipped:         12
+  Skipped:         5
+    blacklisted: 3
+    not whitelisted: 1
+    hostname collision: 1
   Errors:          0
 ```
 

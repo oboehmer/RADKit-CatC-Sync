@@ -24,9 +24,9 @@ class TestRunSyncIntegration:
     ) -> None:
         stats, api = run_sync(catc_devices=[make_device("router1.example.com", "192.168.1.1")])
         assert stats.added == 1
-        api.create_device.assert_called_once()
-        call_args = api.create_device.call_args
-        new_dev = call_args[0][0]
+        api.create_devices.assert_called_once()
+        call_args = api.create_devices.call_args
+        new_dev = call_args[0][0][0]
         assert new_dev.name == "router1"
         assert new_dev.host == "192.168.1.1"
         assert new_dev.device_type == DeviceType.IOS_XE
@@ -51,9 +51,9 @@ class TestRunSyncIntegration:
             radkit_devices=(managed, {}),
         )
         assert stats.updated == 1
-        api.update_device.assert_called_once()
-        call_args = api.update_device.call_args
-        upd_dev = call_args[0][0]
+        api.update_devices.assert_called_once()
+        call_args = api.update_devices.call_args
+        upd_dev = call_args[0][0][0]
         assert str(upd_dev.uuid) == uid
         assert upd_dev.host == "192.168.1.1"
         assert upd_dev.device_type == DeviceType.IOS_XE
@@ -102,7 +102,7 @@ class TestRunSyncErrorHandling:
     def test_add_device_error_counted(
         self, run_sync: Any, mock_controlapi: MagicMock, make_device: Any
     ) -> None:
-        mock_controlapi.create_device.side_effect = RuntimeError("boom")
+        mock_controlapi.create_devices.side_effect = RuntimeError("boom")
         stats, _ = run_sync(catc_devices=[make_device("r1.example.com")])
         assert stats.errors == 1
         assert stats.added == 0
@@ -110,7 +110,7 @@ class TestRunSyncErrorHandling:
     def test_adopt_error_counted(
         self, run_sync: Any, mock_controlapi: MagicMock, make_device: Any
     ) -> None:
-        mock_controlapi.update_device.side_effect = RuntimeError("boom")
+        mock_controlapi.update_devices.side_effect = RuntimeError("boom")
         unmanaged = {"router1": {"uuid": str(uuid4()), "catc_source": ""}}
         stats, _ = run_sync(
             catc_devices=[make_device("router1.example.com")],
@@ -123,7 +123,7 @@ class TestRunSyncErrorHandling:
     def test_update_error_counted(
         self, run_sync: Any, mock_controlapi: MagicMock, make_device: Any
     ) -> None:
-        mock_controlapi.update_device.side_effect = RuntimeError("boom")
+        mock_controlapi.update_devices.side_effect = RuntimeError("boom")
         uid = str(uuid4())
         managed = {
             "router1": {
@@ -140,7 +140,7 @@ class TestRunSyncErrorHandling:
         assert stats.updated == 0
 
     def test_delete_error_counted(self, run_sync: Any, mock_controlapi: MagicMock) -> None:
-        mock_controlapi.delete_device.side_effect = RuntimeError("boom")
+        mock_controlapi.delete_devices.side_effect = RuntimeError("boom")
         managed = {"old-router": {"uuid": str(uuid4()), "catc_source": "catc1.example.com"}}
         stats, _ = run_sync(catc_devices=[], radkit_devices=(managed, {}))
         assert stats.errors == 1

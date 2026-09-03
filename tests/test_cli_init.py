@@ -88,7 +88,7 @@ class TestCliInit:
         result = run(cmd, capture_output=True, text=True)
 
         assert result.returncode == 1, f"Should reject {flags[0]}"
-        assert (
-            "cannot be used with" in result.stderr or "cannot be used with" in result.stdout
-        ), f"Error message not found for {flags[0]}"
+        assert "cannot be used with" in result.stderr or "cannot be used with" in result.stdout, (
+            f"Error message not found for {flags[0]}"
+        )
         assert not (isolated_dir / "catc_sync.toml").exists()

@@ -56,6 +56,7 @@ class AppConfig:
 
     # Sync behavior
     adopt_existing: bool = False
+    batch_size: int = 500
 
     # Non-sensitive usernames that can come from config
     # (passwords must always come from env vars)
@@ -148,6 +149,7 @@ def load_config(config_path: Path | None) -> AppConfig:
     # Parse [sync] section
     sync = cfg.get("sync", {})
     adopt_existing = sync.get("adopt_existing", False)
+    batch_size = sync.get("batch_size", 500)
 
     return AppConfig(
         catc_clusters=catc_clusters,
@@ -159,6 +161,7 @@ def load_config(config_path: Path | None) -> AppConfig:
         metadata_fields=metadata_fields,
         device_labels=device_labels,
         adopt_existing=adopt_existing,
+        batch_size=batch_size,
         catc_user=catc_user,
         radkit_admin_user=radkit_admin_user,
         radkit_ssh_user=radkit_ssh_user,

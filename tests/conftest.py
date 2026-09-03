@@ -48,7 +48,13 @@ def make_device() -> Callable[..., CatCDevice]:
 
 @pytest.fixture
 def mock_controlapi() -> Generator[MagicMock]:
-    """Patch ControlAPI + APIResult and return the mock api object."""
+    """Patch ControlAPI + APIResult and return the mock api object.
+
+    The bulk device methods (create_devices/update_devices/delete_devices) are
+    wired to return a fake BulkResult that reports every submitted item as a
+    success. Tests that want to simulate failures override the relevant method's
+    ``side_effect`` (e.g. raise) after receiving this fixture.
+    """
     with (
         patch("radkit_catc_sync.sync.ControlAPI") as mock_cls,
         patch("radkit_catc_sync.sync.APIResult") as mock_result,
@@ -57,8 +63,22 @@ def mock_controlapi() -> Generator[MagicMock]:
         api = MagicMock()
         api.__enter__ = MagicMock(return_value=api)
         api.__exit__ = MagicMock(return_value=False)
+        api.create_devices.side_effect = _fake_bulk
+        api.update_devices.side_effect = _fake_bulk
+        api.delete_devices.side_effect = _fake_bulk
         mock_cls.create.return_value = api
         yield api
+
+
+def _fake_bulk(items: Any) -> MagicMock:
+    """Build a fake BulkResult where every submitted item succeeded."""
+    n = len(list(items))
+    result = MagicMock()
+    result.success_count = n
+    result.error_count = 0
+    result.enumerate_all_errors.return_value = []
+    result.successful_results.return_value = []
+    return result
 
 
 # ---------------------------------------------------------------------------
