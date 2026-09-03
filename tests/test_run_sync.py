@@ -90,7 +90,7 @@ class TestRunSyncErrorHandling:
             run_sync_impl(
                 config=config,
                 dry_run=False,
-                update_passwords=False,
+                update_credentials=False,
                 catc_user="testuser",
                 catc_password="testpassword",  # noqa: S106
                 radkit_admin_user="testadmin",

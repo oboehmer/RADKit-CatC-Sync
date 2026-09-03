@@ -367,7 +367,7 @@ def fetch_fresh_inventory(
 def run_sync(
     config: AppConfig,
     dry_run: bool,
-    update_passwords: bool,
+    update_credentials: bool,
     catc_user: str,
     catc_password: str,
     radkit_admin_user: str,
@@ -381,7 +381,8 @@ def run_sync(
     Args:
         config: Application config.
         dry_run: If True, don't modify RADKit.
-        update_passwords: If True, overwrite SSH passwords on existing devices.
+        update_credentials: If True, overwrite the SSH username and password on
+            existing devices.
         catc_user: Catalyst Center username.
         catc_password: Catalyst Center password.
         radkit_admin_user: RADKit admin username.
@@ -465,7 +466,7 @@ def run_sync(
                     device=device,
                     catc_hostname=catc_hostname,
                     existing_uuid=unmanaged[name].uuid,
-                    update_passwords=update_passwords,
+                    update_credentials=update_credentials,
                     ssh_user=ssh_user,
                     ssh_password=ssh_password,
                     metadata_fields=config.metadata_fields,
@@ -512,8 +513,8 @@ def run_sync(
                 reasons.append(f"type {existing.device_type} -> {new_type}")
             if existing.catc_source != catc_hostname:
                 reasons.append(f"source {existing.catc_source} -> {catc_hostname}")
-            if update_passwords:
-                reasons.append("password refresh")
+            if update_credentials:
+                reasons.append("credential refresh (user + password)")
 
             # Compare metadata
             fresh_meta = {
@@ -550,7 +551,7 @@ def run_sync(
                 device=device,
                 catc_hostname=catc_hostname,
                 existing_uuid=existing.uuid,
-                update_passwords=update_passwords,
+                update_credentials=update_credentials,
                 ssh_user=ssh_user,
                 ssh_password=ssh_password,
                 metadata_fields=config.metadata_fields,

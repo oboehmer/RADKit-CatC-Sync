@@ -15,7 +15,7 @@ Synchronise Cisco Catalyst Center (formerly DNA Center) device inventory into a 
 - Cross-cluster hostname collision detection (first cluster wins, warning logged)
 - `--dry-run` mode to preview all changes before applying them
 - `--adopt-existing` to take ownership of manually-added RADKit devices
-- `--update-passwords` to refresh SSH credentials on existing devices in RADKit inventory
+- `--update-credentials` to refresh SSH credentials on existing devices in RADKit inventory
 - Loads `.env` and `catc_sync.toml` from the current working directory
 
 ## Comparison with RADKit's built-in sync
@@ -154,6 +154,11 @@ RADKIT_SSH_PASSWORD=your_ssh_password
 2. Non-sensitive values from `catc_sync.toml` (usernames only)
 3. Built-in defaults
 
+> **Note:** `RADKIT_SSH_USER` / `radkit.ssh_user` is only applied to a device when
+> it is first created in the RADKit inventory. Changing it does not touch devices
+> that already exist — run `catc-sync --update-credentials` once afterwards to push
+> the new username (together with the current password) onto existing managed devices.
+
 ## Usage
 
 ```bash
@@ -167,7 +172,7 @@ catc-sync [OPTIONS]
 | `--init` | | Generate a catc_sync.toml template in the current directory |
 | `--config FILE` | `-c` | Path to TOML config file |
 | `--dry-run` | | Preview all changes without applying them |
-| `--update-passwords` | | Overwrite SSH password on existing managed devices |
+| `--update-credentials` | | Overwrite SSH username and password on existing managed devices |
 | `--adopt-existing` | `-A` | Take ownership of unmanaged RADKit devices matching CatC names |
 | `--no-verify-tls` | `-k` | Disable TLS certificate verification for Catalyst Center |
 | `--verbose` | `-v` | Enable debug-level logging |
@@ -185,8 +190,8 @@ catc-sync --dry-run
 # Normal sync
 catc-sync
 
-# Sync and refresh SSH passwords on existing devices
-catc-sync --update-passwords
+# Sync and refresh SSH credentials (username + password) on existing devices
+catc-sync --update-credentials
 
 # Take over manually-added devices that now exist in CatC
 catc-sync --adopt-existing --dry-run    # preview first

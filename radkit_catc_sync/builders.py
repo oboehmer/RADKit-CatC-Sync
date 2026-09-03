@@ -122,7 +122,7 @@ def build_update_device(
     device: CatCDevice,
     catc_hostname: str,
     existing_uuid: str,
-    update_passwords: bool,
+    update_credentials: bool,
     ssh_user: str,
     ssh_password: str,
     metadata_fields: frozenset[str],
@@ -148,7 +148,7 @@ def build_update_device(
         "meta_data_update": meta_update,
     }
 
-    if update_passwords:
+    if update_credentials:
         kwargs["terminal"] = UpdateTerminal(
             username=ssh_user,
             password=CustomSecretStr(ssh_password),

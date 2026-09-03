@@ -143,7 +143,7 @@ class TestBuildUpdateDeviceWithLabels:
             device=device,
             catc_hostname="catc1.example.com",
             existing_uuid=str(uuid4()),
-            update_passwords=False,
+            update_credentials=False,
             ssh_user="netops",
             ssh_password="secret",  # noqa: S106
             metadata_fields=config.metadata_fields,
@@ -162,7 +162,7 @@ class TestBuildUpdateDeviceWithLabels:
             device=device,
             catc_hostname="catc1.example.com",
             existing_uuid=str(uuid4()),
-            update_passwords=False,
+            update_credentials=False,
             ssh_user="netops",
             ssh_password="secret",  # noqa: S106
             metadata_fields=config.metadata_fields,
@@ -178,7 +178,7 @@ class TestBuildUpdateDeviceWithLabels:
             device=device,
             catc_hostname="catc1.example.com",
             existing_uuid=str(uuid4()),
-            update_passwords=False,
+            update_credentials=False,
             ssh_user="netops",
             ssh_password="secret",  # noqa: S106
             metadata_fields=config.metadata_fields,
@@ -195,7 +195,7 @@ class TestBuildUpdateDeviceWithLabels:
             device=device,
             catc_hostname="catc1.example.com",
             existing_uuid=str(uuid4()),
-            update_passwords=False,
+            update_credentials=False,
             ssh_user="netops",
             ssh_password="secret",  # noqa: S106
             metadata_fields=config.metadata_fields,
@@ -213,7 +213,7 @@ class TestBuildUpdateDeviceWithLabels:
             device=device,
             catc_hostname="catc1.example.com",
             existing_uuid=str(uuid4()),
-            update_passwords=False,
+            update_credentials=False,
             ssh_user="netops",
             ssh_password="secret",  # noqa: S106
             metadata_fields=config.metadata_fields,
@@ -500,7 +500,7 @@ class TestLabelsIntegration:
             device=device,
             catc_hostname="catc.example.com",
             existing_uuid=existing_device.uuid,
-            update_passwords=False,
+            update_credentials=False,
             ssh_user="admin",
             ssh_password="secret",  # noqa: S106
             metadata_fields=config.metadata_fields,

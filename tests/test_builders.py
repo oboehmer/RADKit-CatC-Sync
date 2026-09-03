@@ -123,14 +123,14 @@ class TestBuildUpdateDevice:
             device=device,
             catc_hostname="catc1.example.com",
             existing_uuid=str(uuid4()),
-            update_passwords=False,
+            update_credentials=False,
             ssh_user="netops",
             ssh_password="secret",  # noqa: S106
             metadata_fields=config.metadata_fields,
             meta_source_key=config.meta_source_key,
         )
         assert upd.host == "10.0.0.1"
-        # terminal should not be set when update_passwords=False
+        # terminal should not be set when update_credentials=False
         assert isinstance(upd.terminal, DontUpdateType)
 
     def test_includes_password_when_flag_true(self, make_device: Any) -> None:
@@ -140,7 +140,7 @@ class TestBuildUpdateDevice:
             device=device,
             catc_hostname="catc1.example.com",
             existing_uuid=str(uuid4()),
-            update_passwords=True,
+            update_credentials=True,
             ssh_user="netops",
             ssh_password="secret",  # noqa: S106
             metadata_fields=config.metadata_fields,

@@ -128,9 +128,9 @@ def main() -> int:
         help="Show what would be changed without making any modifications.",
     )
     parser.add_argument(
-        "--update-passwords",
+        "--update-credentials",
         action="store_true",
-        help="Overwrite SSH password on existing managed devices.",
+        help="Overwrite SSH username and password on existing managed devices.",
     )
     parser.add_argument(
         "-A",
@@ -172,8 +172,8 @@ def main() -> int:
         if args.dry_run:
             logger.error("--init cannot be used with --dry-run")
             return 1
-        if args.update_passwords:
-            logger.error("--init cannot be used with --update-passwords")
+        if args.update_credentials:
+            logger.error("--init cannot be used with --update-credentials")
             return 1
         if args.adopt_existing:
             logger.error("--init cannot be used with -A/--adopt-existing")
@@ -214,7 +214,7 @@ def main() -> int:
         stats = run_sync(
             config=config,
             dry_run=args.dry_run,
-            update_passwords=args.update_passwords,
+            update_credentials=args.update_credentials,
             catc_user=env["CATC_USER"],
             catc_password=env["CATC_PASSWORD"],
             radkit_admin_user=env["RADKIT_ADMIN_USER"],

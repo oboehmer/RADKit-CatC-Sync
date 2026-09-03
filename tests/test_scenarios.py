@@ -446,7 +446,7 @@ def test_sync_scenario(scenario: Scenario, mock_controlapi: MagicMock) -> None:
         stats = run_sync(
             config=config,
             dry_run=scenario.dry_run,
-            update_passwords=scenario.update_pw,
+            update_credentials=scenario.update_pw,
             catc_user="testuser",
             catc_password="testpassword",  # noqa: S106
             radkit_admin_user="testadmin",

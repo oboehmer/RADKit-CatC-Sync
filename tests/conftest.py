@@ -153,7 +153,7 @@ def run_sync(mock_controlapi: MagicMock) -> Callable[..., tuple[Stats, MagicMock
             stats = run_sync_impl(
                 config=config,
                 dry_run=dry_run,
-                update_passwords=update_pw,
+                update_credentials=update_pw,
                 catc_user=_SYNC_CREDS["catc_user"],
                 catc_password=_SYNC_CREDS["catc_password"],
                 radkit_admin_user=_SYNC_CREDS["radkit_admin_user"],

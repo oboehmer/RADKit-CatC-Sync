@@ -35,6 +35,12 @@ clusters = [
 
 # SSH username assigned to all imported devices (optional — can also be set
 # via RADKIT_SSH_USER env var).
+#
+# NOTE: this value is only applied to a device when it is first created in the
+# RADKit inventory. Changing it here does NOT touch devices that already exist.
+# After changing ssh_user, run `catc-sync --update-credentials` once to push the
+# new username (together with the current password) onto all existing managed
+# devices.
 # ssh_user = "netops"
 
 # ---------------------------------------------------------------------------

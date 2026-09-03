@@ -73,7 +73,7 @@ class TestCliInit:
             (["-c", "/tmp/config.toml"],),
             (["--config", "/tmp/config.toml"],),
             (["--dry-run"],),
-            (["--update-passwords"],),
+            (["--update-credentials"],),
             (["-A"],),
             (["--adopt-existing"],),
             (["-k"],),
