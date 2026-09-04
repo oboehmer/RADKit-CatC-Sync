@@ -56,8 +56,10 @@ def test_normalise_short_mode(input_name: str, expected: str) -> None:
         ("r1.dc1.example.com", (".example.com",), "r1-dc1"),
         # Leading dot is optional in config.
         ("r1.dc1.example.com", ("example.com",), "r1-dc1"),
-        # Case-insensitive.
+        # Case-insensitive in both directions: upper-case hostname...
         ("R1.DC1.EXAMPLE.COM", (".example.com",), "r1-dc1"),
+        # ...and upper-case suffix, which is the direction that regressed.
+        ("router1.dc1.Example.Com", ("EXAMPLE.COM",), "router1-dc1"),
         # No match leaves the FQDN intact.
         ("r1.partner.net", (".example.com",), "r1-partner-net"),
         # Suffix must be on a label boundary.
@@ -66,6 +68,15 @@ def test_normalise_short_mode(input_name: str, expected: str) -> None:
 )
 def test_normalise_strip_domains(input_name: str, strip: tuple[str, ...], expected: str) -> None:
     assert NameNormaliser(strip_domains=strip)(input_name) == expected
+
+
+def test_strip_domains_is_inert_under_short_mode() -> None:
+    """Documented no-op: short mode already discards everything but label one."""
+    hostname = "router1.dc1.example.com"
+    with_strip = NameNormaliser(mode=NameMode.SHORT, strip_domains=(".example.com",))
+    without_strip = NameNormaliser(mode=NameMode.SHORT)
+
+    assert with_strip(hostname) == without_strip(hostname) == "router1"
 
 
 def test_normalise_returns_empty_for_unnameable_hostname() -> None:
@@ -117,33 +128,3 @@ def test_require_api_result_ok_raises_on_error() -> None:
         pytest.raises(RuntimeError, match="Something went wrong"),
     ):
         require_api_result_ok(mock_result, "test_action")
-
-
-def test_strip_domains_is_case_insensitive() -> None:
-    """A suffix configured in upper case must still match a mixed-case host."""
-    normalise = NameNormaliser(mode=NameMode.FQDN, strip_domains=("EXAMPLE.COM",))
-
-    assert normalise("router1.dc1.Example.Com") == "router1-dc1"
-
-
-def test_strip_domains_longest_match_wins() -> None:
-    """Overlapping suffixes resolve to the most specific one."""
-    normalise = NameNormaliser(
-        mode=NameMode.FQDN, strip_domains=(".example.com", ".dc1.example.com")
-    )
-
-    assert normalise("router1.dc1.example.com") == "router1"
-
-
-def test_strip_domains_leading_dot_is_optional() -> None:
-    normalise = NameNormaliser(mode=NameMode.FQDN, strip_domains=("example.com",))
-
-    assert normalise("router1.dc1.example.com") == "router1-dc1"
-
-
-def test_strip_domains_is_inert_under_short_mode() -> None:
-    """Documented no-op: short mode already discards everything but label one."""
-    with_strip = NameNormaliser(mode=NameMode.SHORT, strip_domains=(".example.com",))
-    without_strip = NameNormaliser(mode=NameMode.SHORT)
-
-    assert with_strip("router1.dc1.example.com") == without_strip("router1.dc1.example.com")
