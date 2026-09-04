@@ -1,6 +1,6 @@
-# RADKit-CatC-Sync
+# Sync CatC with RADKit inventory
 
-Synchronise Cisco Catalyst Center (formerly DNA Center) device inventory into a [RADKit](https://radkit.cisco.com) service using the RADKit ControlAPI.
+Synchronise Cisco Catalyst Center device inventory into a [RADKit](https://radkit.cisco.com) service using the RADKit ControlAPI.
 
 ## Features
 
