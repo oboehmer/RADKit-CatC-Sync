@@ -10,7 +10,7 @@ import sys
 from pathlib import Path
 
 from .config import load_config, load_env_file, load_env_vars
-from .sync import CatCInventoryError, RenameGuardError, run_sync
+from .sync import CatCInventoryError, RadkitInventoryError, RenameGuardError, run_sync
 
 logger = logging.getLogger(__name__)
 
@@ -242,6 +242,10 @@ def main() -> int:
     except CatCInventoryError as exc:
         logger.error("Aborting sync: %s", exc)
         logger.error("No changes were made. Fix CatC connectivity/credentials and retry.")
+        return 1
+    except RadkitInventoryError as exc:
+        logger.error("Aborting sync: %s", exc)
+        logger.error("No changes were made.")
         return 1
     except ValueError as exc:
         logger.error("%s", exc)

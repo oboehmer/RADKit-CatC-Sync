@@ -9,7 +9,7 @@ from typing import Any
 from urllib.parse import urlparse
 from uuid import UUID
 
-from radkit_service.control_api import ControlAPI
+from radkit_service.control_api import APIError, AuthenticationError, ControlAPI
 
 from .apiutils import require_api_result_ok
 from .builders import build_metadata, build_new_device, build_update_device, get_device_type
@@ -42,6 +42,30 @@ class CatCInventoryError(RuntimeError):
     Aborts the sync so that a partial/empty inventory never triggers deletion of
     managed RADKit devices that are merely unreachable.
     """
+
+
+class RadkitInventoryError(RuntimeError):
+    """Raised when the initial RADKit inventory fetch fails.
+
+    Covers a bad admin credential, an unreachable service, and API errors
+    raised before any change has been applied. Aborts the sync so that a
+    missing inventory is never mistaken for an empty one.
+    """
+
+
+def _describe_radkit_failure(exc: BaseException, base_url: str) -> str:
+    """Turn a RADKit client exception into something a user can act on."""
+    if isinstance(exc, AuthenticationError):
+        return (
+            f"RADKit rejected the admin credentials for {base_url} ({exc}). "
+            f"Check RADKIT_ADMIN_USER and RADKIT_ADMIN_PASSWORD."
+        )
+    if isinstance(exc, ConnectionError):
+        return (
+            f"Could not reach the RADKit service at {base_url} ({exc}). "
+            f"Check that the service is running and that radkit.base_url is correct."
+        )
+    return f"RADKit API error while reading the device inventory from {base_url}: {exc}"
 
 
 def _identity_of_stored(device: StoredRadkitDevice) -> str | None:
@@ -431,7 +455,12 @@ def run_sync(
             catc_future = pool.submit(
                 fetch_fresh_inventory, config, filters, catc_user, catc_password, stats
             )
-            managed, unmanaged = fetch_radkit_devices(api, config)
+            try:
+                managed, unmanaged = fetch_radkit_devices(api, config)
+            except (AuthenticationError, APIError, ConnectionError) as exc:
+                raise RadkitInventoryError(
+                    _describe_radkit_failure(exc, config.radkit_base_url)
+                ) from exc
             fresh = catc_future.result()  # re-raises CatCInventoryError → fail-fast
 
         logger.info(

@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "radkit-catc-sync"
-version = "0.3.0"
+version = "0.3.1"
 description = "Sync Cisco Catalyst Center device inventory into a RADKit service"
 readme = "README.md"
 license = { text = "MIT" }
