@@ -9,13 +9,14 @@ from typing import Any
 from urllib.parse import urlparse
 from uuid import UUID
 
-from radkit_service.control_api import APIResult, ControlAPI
-from radkit_service.webserver.models.labels import NewLabel
+from radkit_service.control_api import ControlAPI
 
+from .apiutils import require_api_result_ok
 from .builders import build_metadata, build_new_device, build_update_device, get_device_type
 from .catc_client import CatCClient
 from .config import AppConfig
 from .filters import FilterDecision, FilterSet
+from .labels import compute_labels_to_add, ensure_labels_exist
 from .models import CatCDevice, StoredRadkitDevice
 from .stats import SkipReason, Stats
 
@@ -51,15 +52,6 @@ def normalise_name(fqdn: str) -> str:
     # Collapse consecutive dashes and strip leading/trailing dashes
     sanitised = re.sub(r"-{2,}", "-", sanitised).strip("-")
     return sanitised
-
-
-def require_api_result_ok(result: APIResult, action: str) -> Any:
-    """Return the typed API result payload or raise on RADKit API errors."""
-    if APIResult.is_error(result):
-        raise RuntimeError(
-            f"RADKit ControlAPI failed to {action}: {result.root.message} ({result.root.detail})"
-        )
-    return result.result
 
 
 def _apply_bulk(
@@ -113,56 +105,6 @@ def _apply_bulk(
                 len(chunk),
             )
     return success, errors
-
-
-def ensure_labels_exist(
-    api: ControlAPI,
-    config: AppConfig,
-    dry_run: bool,
-) -> dict[str, int]:
-    """
-    Ensure all configured labels exist in RADKit.
-
-    Auto-creates labels that don't exist yet. In dry-run mode, logs what would
-    be created but doesn't actually create them.
-
-    Args:
-        api: RADKit ControlAPI instance.
-        config: Application config (for device_labels).
-        dry_run: If True, don't create labels.
-
-    Returns:
-        Dictionary mapping label name → label ID.
-    """
-    if not config.device_labels:
-        return {}
-
-    # Fetch existing labels
-    stored_labels = require_api_result_ok(api.list_labels(), "list labels")
-    label_map: dict[str, int] = {label.name: label.id for label in (stored_labels or [])}
-
-    # Identify missing labels
-    missing_names = [name for name in config.device_labels if name not in label_map]
-
-    if missing_names:
-        if dry_run:
-            logger.info(
-                "[DRY-RUN] Would create %d missing label(s): %s",
-                len(missing_names),
-                ", ".join(missing_names),
-            )
-        else:
-            # Auto-create missing labels with default color #000000
-            new_labels = [NewLabel(name=name, color="#000000") for name in missing_names]
-            bulk_result = api.create_labels(new_labels)
-            # BulkResult has successful_results() method to get created labels
-            created_labels = list(bulk_result.successful_results())
-            logger.info("Created %d label(s)", len(created_labels))
-            # Update label_map with newly created labels
-            for label in created_labels:
-                label_map[label.name] = label.id
-
-    return label_map
 
 
 def fetch_radkit_devices(
@@ -533,14 +475,9 @@ def run_sync(
                 reasons.append(f"metadata ({', '.join(changed_keys)})")
 
             # Compute missing labels to backfill
-            labels_to_add: list[str] = []
-            if config.device_labels and label_config_ids:
-                configured_label_ids = {label_config_ids[n] for n in config.device_labels}
-                missing_label_ids = configured_label_ids - existing.labels
-                id_to_name = {v: k for k, v in label_config_ids.items()}
-                labels_to_add = [id_to_name[lid] for lid in missing_label_ids]
-                if labels_to_add:
-                    reasons.append(f"labels (+{', +'.join(labels_to_add)})")
+            labels_to_add = compute_labels_to_add(existing, config.device_labels, label_config_ids)
+            if labels_to_add:
+                reasons.append(f"labels (+{', +'.join(labels_to_add)})")
 
             if not reasons:
                 logger.debug("No changes for device '%s' — skipping update", name)

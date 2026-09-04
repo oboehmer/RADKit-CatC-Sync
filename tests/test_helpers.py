@@ -7,8 +7,9 @@ from unittest.mock import MagicMock, patch
 import pytest
 from radkit_common.types import DeviceType
 
+from radkit_catc_sync.apiutils import require_api_result_ok
 from radkit_catc_sync.builders import get_device_type
-from radkit_catc_sync.sync import normalise_name, require_api_result_ok
+from radkit_catc_sync.sync import normalise_name
 
 # ---------------------------------------------------------------------------
 # normalise_name
@@ -63,7 +64,7 @@ def test_require_api_result_ok_raises_on_error() -> None:
     mock_result.root.detail = "Detailed error information"
 
     with (
-        patch("radkit_catc_sync.sync.APIResult.is_error", return_value=True),
+        patch("radkit_catc_sync.apiutils.APIResult.is_error", return_value=True),
         pytest.raises(RuntimeError, match="Something went wrong"),
     ):
         require_api_result_ok(mock_result, "test_action")

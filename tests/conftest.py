@@ -57,7 +57,7 @@ def mock_controlapi() -> Generator[MagicMock]:
     """
     with (
         patch("radkit_catc_sync.sync.ControlAPI") as mock_cls,
-        patch("radkit_catc_sync.sync.APIResult") as mock_result,
+        patch("radkit_catc_sync.apiutils.APIResult") as mock_result,
     ):
         mock_result.is_error.return_value = False
         api = MagicMock()

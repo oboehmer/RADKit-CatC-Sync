@@ -7,14 +7,15 @@ from typing import Any
 from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
+import pytest
 from radkit_service.webserver.models.base import APIResult, Ok
 from radkit_service.webserver.models.labels import StoredLabel
 
 from radkit_catc_sync import AppConfig
 from radkit_catc_sync.builders import build_new_device, build_update_device
 from radkit_catc_sync.config import load_config
+from radkit_catc_sync.labels import compute_labels_to_add, ensure_labels_exist
 from radkit_catc_sync.models import StoredRadkitDevice
-from radkit_catc_sync.sync import ensure_labels_exist
 
 # ---------------------------------------------------------------------------
 # Config loading tests
@@ -308,7 +309,7 @@ class TestEnsureLabelsExist:
             Ok(success=True, result=[])
         )
 
-        with patch("radkit_catc_sync.sync.logger") as mock_logger:
+        with patch("radkit_catc_sync.labels.logger") as mock_logger:
             result = ensure_labels_exist(mock_api, config, dry_run=True)
 
         # Empty dict returned (labels don't exist yet)
@@ -409,51 +410,110 @@ class TestStoredRadkitDeviceLabels:
         )
         assert device.labels == set()
 
-    def test_label_computation_logic(self) -> None:
-        """Test the label missing computation logic."""
-        # Simulate label resolution
-        label_config_ids = {"catc-managed": 1, "production": 2, "sr12345": 3}
-        configured_label_ids = {label_config_ids[name] for name in label_config_ids}
 
-        # Device has only ID 1
-        device = StoredRadkitDevice(
-            name="test",
-            uuid=str(uuid4()),
-            host="10.0.0.1",
-            device_type="LINUX",
-            catc_source="catc1",
-            metadata={},
-            labels={1},
-        )
+# ---------------------------------------------------------------------------
+# compute_labels_to_add
+# ---------------------------------------------------------------------------
 
-        # Compute missing
-        missing_label_ids = configured_label_ids - device.labels
-        id_to_name = {v: k for k, v in label_config_ids.items()}
-        labels_to_add = sorted([id_to_name[lid] for lid in missing_label_ids])
 
-        assert set(labels_to_add) == {"production", "sr12345"}
+def _device_with_labels(labels: set[int]) -> StoredRadkitDevice:
+    """Build a StoredRadkitDevice carrying the given label IDs."""
+    return StoredRadkitDevice(
+        name="router-01",
+        uuid=str(uuid4()),
+        host="10.10.10.5",
+        device_type="IOS_XE",
+        catc_source="catc.example.com",
+        metadata={},
+        labels=labels,
+    )
 
-    def test_device_with_extra_labels_not_configured(self) -> None:
-        """Test device that has labels not in configuration."""
-        label_config_ids = {"catc-managed": 1}
-        configured_label_ids = {label_config_ids["catc-managed"]}
 
-        # Device has configured label + extra labels
-        device = StoredRadkitDevice(
-            name="test",
-            uuid=str(uuid4()),
-            host="10.0.0.1",
-            device_type="LINUX",
-            catc_source="catc1",
-            metadata={},
-            labels={1, 99, 100},  # 1=catc-managed, 99 & 100 are extra
-        )
+_LABEL_IDS = {"catc-managed": 10, "production": 11, "sr12345": 12}
 
-        # Compute missing
-        missing_label_ids = configured_label_ids - device.labels
 
-        # No missing labels (1 is present)
-        assert missing_label_ids == set()
+class TestComputeLabelsToAdd:
+    """Test the label backfill computation used by run_sync."""
+
+    @pytest.mark.parametrize(
+        ("device_labels", "configured", "label_ids", "expected"),
+        [
+            pytest.param(
+                set(),
+                list(_LABEL_IDS),
+                _LABEL_IDS,
+                ["catc-managed", "production", "sr12345"],
+                id="device-has-none-all-added",
+            ),
+            pytest.param(
+                {10},
+                list(_LABEL_IDS),
+                _LABEL_IDS,
+                ["production", "sr12345"],
+                id="device-has-one-rest-added",
+            ),
+            pytest.param(
+                {10, 11, 12},
+                list(_LABEL_IDS),
+                _LABEL_IDS,
+                [],
+                id="device-has-all-nothing-added",
+            ),
+            pytest.param(
+                {10, 99, 100},
+                ["catc-managed"],
+                {"catc-managed": 10},
+                [],
+                id="unconfigured-labels-ignored",
+            ),
+            pytest.param(
+                {99},
+                ["catc-managed"],
+                {"catc-managed": 10},
+                ["catc-managed"],
+                id="unconfigured-labels-do-not-satisfy-config",
+            ),
+            pytest.param(
+                set(),
+                [],
+                _LABEL_IDS,
+                [],
+                id="no-labels-configured",
+            ),
+            pytest.param(
+                set(),
+                list(_LABEL_IDS),
+                {},
+                [],
+                id="empty-label-ids-dry-run",
+            ),
+            pytest.param(
+                set(),
+                ["catc-managed", "not-created"],
+                {"catc-managed": 10},
+                ["catc-managed"],
+                id="name-absent-from-label-ids-skipped",
+            ),
+        ],
+    )
+    def test_computes_missing_labels(
+        self,
+        device_labels: set[int],
+        configured: list[str],
+        label_ids: dict[str, int],
+        expected: list[str],
+    ) -> None:
+        device = _device_with_labels(device_labels)
+        assert compute_labels_to_add(device, configured, label_ids) == expected
+
+    def test_result_is_sorted(self) -> None:
+        """Output must be deterministic: it feeds a log line and UpdateLabelSet."""
+        device = _device_with_labels(set())
+        # Insertion order deliberately not alphabetical.
+        label_ids = {"zebra": 1, "alpha": 2, "mike": 3}
+        result = compute_labels_to_add(device, list(label_ids), label_ids)
+        assert result == ["alpha", "mike", "zebra"]
+        assert result == sorted(result)
 
 
 # ---------------------------------------------------------------------------
@@ -462,75 +522,48 @@ class TestStoredRadkitDeviceLabels:
 
 
 class TestLabelsIntegration:
-    """Integration tests for label feature."""
+    """Integration tests for the label feature."""
 
-    def test_label_backfill_logic(self, make_device: Any) -> None:
-        """Test the full label backfill logic for existing devices."""
-        # Setup
-        label_config_ids = {
-            "catc-managed": 10,
-            "production": 11,
-            "sr12345": 12,
-        }
+    def test_backfill_feeds_update_device(self, make_device: Any) -> None:
+        """Missing labels computed for an existing device reach the UpdateDevice."""
+        existing = _device_with_labels({10})  # only catc-managed present
+        labels_to_add = compute_labels_to_add(existing, list(_LABEL_IDS), _LABEL_IDS)
+        assert labels_to_add == ["production", "sr12345"]
 
-        # Scenario: Device has only catc-managed label
-        existing_device = StoredRadkitDevice(
-            name="router-01",
-            uuid=str(uuid4()),
-            host="10.10.10.5",
-            device_type="IOS_XE",
-            catc_source="catc.example.com",
-            metadata={"catc_source": "catc.example.com"},
-            labels={10},  # Only has catc-managed
-        )
-
-        # Compute what needs to be added
-        configured_label_ids = set(label_config_ids.values())
-        missing_label_ids = configured_label_ids - existing_device.labels
-        id_to_name = {v: k for k, v in label_config_ids.items()}
-        labels_to_add = [id_to_name[lid] for lid in missing_label_ids]
-
-        # Assertions
-        assert set(labels_to_add) == {"production", "sr12345"}
-
-        # Verify these would be added via UpdateDevice
         device = make_device("router-01.example.com", "10.10.10.5")
         config = AppConfig()
         upd = build_update_device(
             device=device,
             catc_hostname="catc.example.com",
-            existing_uuid=existing_device.uuid,
+            existing_uuid=existing.uuid,
             update_credentials=False,
             ssh_user="admin",
             ssh_password="secret",  # noqa: S106
             metadata_fields=config.metadata_fields,
             meta_source_key=config.meta_source_key,
-            labels_to_add=labels_to_add,
+            labels_to_add=labels_to_add or None,
         )
+        assert list(upd.label_update.add) == ["production", "sr12345"]
+        assert upd.label_update.remove == []
+        assert upd.label_update.replace is None
 
-        assert set(upd.label_update.add) == {"production", "sr12345"}
+    def test_no_backfill_when_all_labels_present(self, make_device: Any) -> None:
+        """A fully-labelled device produces no label_update at all."""
+        existing = _device_with_labels({10, 11, 12})
+        labels_to_add = compute_labels_to_add(existing, list(_LABEL_IDS), _LABEL_IDS)
+        assert labels_to_add == []
 
-    def test_no_backfill_when_all_labels_present(self) -> None:
-        """Test that no update is needed when all labels already present."""
-        label_config_ids = {
-            "catc-managed": 10,
-            "production": 11,
-        }
-
-        # Device has all configured labels
-        device = StoredRadkitDevice(
-            name="router-02",
-            uuid=str(uuid4()),
-            host="10.10.10.6",
-            device_type="IOS_XE",
-            catc_source="catc.example.com",
-            metadata={},
-            labels={10, 11},
+        device = make_device("router-02.example.com", "10.10.10.6")
+        config = AppConfig()
+        upd = build_update_device(
+            device=device,
+            catc_hostname="catc.example.com",
+            existing_uuid=existing.uuid,
+            update_credentials=False,
+            ssh_user="admin",
+            ssh_password="secret",  # noqa: S106
+            metadata_fields=config.metadata_fields,
+            meta_source_key=config.meta_source_key,
+            labels_to_add=labels_to_add or None,
         )
-
-        # Compute missing
-        configured_label_ids = set(label_config_ids.values())
-        missing_label_ids = configured_label_ids - device.labels
-
-        # No labels to add
-        assert missing_label_ids == set()
+        assert upd.label_update.is_empty()
