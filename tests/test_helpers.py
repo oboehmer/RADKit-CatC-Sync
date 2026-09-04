@@ -117,3 +117,33 @@ def test_require_api_result_ok_raises_on_error() -> None:
         pytest.raises(RuntimeError, match="Something went wrong"),
     ):
         require_api_result_ok(mock_result, "test_action")
+
+
+def test_strip_domains_is_case_insensitive() -> None:
+    """A suffix configured in upper case must still match a mixed-case host."""
+    normalise = NameNormaliser(mode=NameMode.FQDN, strip_domains=("EXAMPLE.COM",))
+
+    assert normalise("router1.dc1.Example.Com") == "router1-dc1"
+
+
+def test_strip_domains_longest_match_wins() -> None:
+    """Overlapping suffixes resolve to the most specific one."""
+    normalise = NameNormaliser(
+        mode=NameMode.FQDN, strip_domains=(".example.com", ".dc1.example.com")
+    )
+
+    assert normalise("router1.dc1.example.com") == "router1"
+
+
+def test_strip_domains_leading_dot_is_optional() -> None:
+    normalise = NameNormaliser(mode=NameMode.FQDN, strip_domains=("example.com",))
+
+    assert normalise("router1.dc1.example.com") == "router1-dc1"
+
+
+def test_strip_domains_is_inert_under_short_mode() -> None:
+    """Documented no-op: short mode already discards everything but label one."""
+    with_strip = NameNormaliser(mode=NameMode.SHORT, strip_domains=(".example.com",))
+    without_strip = NameNormaliser(mode=NameMode.SHORT)
+
+    assert with_strip("router1.dc1.example.com") == without_strip("router1.dc1.example.com")

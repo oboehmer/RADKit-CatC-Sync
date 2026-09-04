@@ -182,6 +182,12 @@ def load_config(config_path: Path | None) -> AppConfig:
         raise ValueError(
             f"Invalid [sync.naming] strip_domains in {config_path}: expected a list of strings"
         )
+    if name_strip_domains and name_mode == "short":
+        logger.warning(
+            '[sync.naming] strip_domains is ignored when mode = "short": '
+            "only the first hostname label is kept, so there is no suffix left "
+            'to strip. Remove strip_domains, or switch to mode = "fqdn".'
+        )
 
     return AppConfig(
         catc_clusters=catc_clusters,

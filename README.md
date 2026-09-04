@@ -140,14 +140,32 @@ hostname is carried into the name:
 | `"fqdn"` (default) | `router1-dc1-example-com`         |
 | `"short"`          | `router1`                         |
 
-`strip_domains` removes a domain suffix before `mode` is applied. Matching is
-case-insensitive, the longest configured suffix wins, and the leading dot is
-optional. With `strip_domains = [".example.com"]`:
+`strip_domains` exists for the middle ground between the two modes. Under
+`"fqdn"`, every device carries your organisation's domain in its name, which is
+noise — it is the same on every device. Under `"short"` you lose the
+subdomain too, which is often the part that actually distinguishes one device
+from another. `strip_domains` drops the shared suffix and keeps the rest:
+
+```toml
+[sync.naming]
+mode = "fqdn"
+strip_domains = [".example.com"]
+```
 
 ```
-router1.dc1.example.com  ->  router1-dc1
-router1.partner.net      ->  router1-partner-net   (no suffix matched)
+router1.dc1.example.com  ->  router1-dc1            (domain dropped, site kept)
+router2.dc2.example.com  ->  router2-dc2
+router1.partner.net      ->  router1-partner-net    (no configured suffix matched)
 ```
+
+Suffixes are matched case-insensitively, the leading dot is optional, and if
+several entries match the longest one wins — so `[".example.com",
+".dc1.example.com"]` turns `router1.dc1.example.com` into `router1`, not
+`router1-dc1`.
+
+> `strip_domains` has no effect when `mode = "short"`: only the first label
+> survives, so there is no suffix left to strip. Configuring both logs a
+> warning.
 
 `"fqdn"` is the default because it is lossless: the same short hostname in two
 different domains stays distinct. Under `"short"` (or with an aggressive

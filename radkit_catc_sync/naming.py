@@ -63,7 +63,9 @@ class NameNormaliser:
         mode: Whether to keep the full FQDN or only the first label.
         strip_domains: Domain suffixes removed before the mode is applied.
             Matching is case-insensitive and the longest match wins. Entries
-            may be written with or without a leading dot.
+            may be written with or without a leading dot. Has no effect under
+            :attr:`NameMode.SHORT`, which already discards everything after
+            the first label.
     """
 
     mode: NameMode = NameMode.FQDN
@@ -81,7 +83,8 @@ class NameNormaliser:
         """Remove the longest configured domain suffix, if any matches."""
         best = ""
         for suffix in self.strip_domains:
-            normalised = suffix if suffix.startswith(".") else f".{suffix}"
+            lowered = suffix.lower()
+            normalised = lowered if lowered.startswith(".") else f".{lowered}"
             if hostname.endswith(normalised) and len(normalised) > len(best):
                 best = normalised
         return hostname[: -len(best)] if best else hostname
