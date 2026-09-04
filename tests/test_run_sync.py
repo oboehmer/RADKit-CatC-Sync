@@ -86,7 +86,7 @@ class TestRunSyncIntegration:
 class TestRunSyncErrorHandling:
     def test_empty_clusters_raises(self, mock_controlapi: MagicMock) -> None:
         config = AppConfig(catc_clusters=[])
-        with pytest.raises(ValueError, match="CATC_CLUSTERS is empty"):
+        with pytest.raises(ValueError, match="No Catalyst Center clusters configured"):
             run_sync_impl(
                 config=config,
                 dry_run=False,

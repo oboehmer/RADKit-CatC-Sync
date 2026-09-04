@@ -1,175 +1,192 @@
-# catc_sync.toml — Configuration for RADKit-CatC-Sync
-#
-# Copy this file to catc_sync.toml and adjust for your environment.
-# Passwords must be set via environment variables or a .env file.
+## catc_sync.toml — Configuration for RADKit-CatC-Sync
+##
+## Copy this file to catc_sync.toml and adjust for your environment.
+##
+## CONVENTION USED IN THIS FILE
+##   ##  prose / explanation
+##   #   a real setting, commented out
+##
+## A commented-out setting shows its default value, UNLESS it is marked
+## REQUIRED — required settings have no default and show an example value
+## instead. Uncommenting an optional setting without changing it is a no-op.
+##
+## THIS FILE ALONE IS NOT ENOUGH TO RUN
+## Three usernames and three passwords are required. Passwords are
+## environment-only; usernames may come from here or from the environment.
+## An untouched copy of this file will abort at startup listing what is
+## missing.
+##
+## CREDENTIALS
+##   Passwords — environment only, never read from this file:
+##     CATC_PASSWORD, RADKIT_ADMIN_PASSWORD, RADKIT_SSH_PASSWORD
+##   Usernames — this file or the environment; the environment wins:
+##     CATC_USER, RADKIT_ADMIN_USER, RADKIT_SSH_USER
+##   Both can be placed in a .env file in the working directory.
 
-# ---------------------------------------------------------------------------
-# Catalyst Center clusters
-# ---------------------------------------------------------------------------
+
+## ---------------------------------------------------------------------------
+## Catalyst Center clusters
+## ---------------------------------------------------------------------------
 [catc]
 
-# List of Catalyst Center cluster URLs to sync from.
+## REQUIRED. Catalyst Center cluster URLs to sync from.
+## At least one entry is needed; the run aborts if this list is empty.
 clusters = [
     # "https://catc1.example.com",
     # "https://catc2.example.com",
 ]
 
-# CatC username (optional here — can also be set via CATC_USER env var).
-# user = "admin"
+## REQUIRED. CatC username — set here or via the CATC_USER env var.
+## No default; the value below is only an example.
+#user = "admin"
 
-# Disable TLS certificate verification for CatC connections (default: true).
-# Set to false when CatC uses a self-signed or internal CA certificate.
-# Can also be overridden per-run with the -k / --no-verify-tls CLI flag.
-# verify_tls = true
+## Verify TLS certificates on CatC connections (default: true).
+## Set to false when CatC uses a self-signed or internal CA certificate.
+## Override per-run with the -k / --no-verify-tls CLI flag.
+#verify_tls = true
 
-# ---------------------------------------------------------------------------
-# RADKit service
-# ---------------------------------------------------------------------------
+
+## ---------------------------------------------------------------------------
+## RADKit service
+## ---------------------------------------------------------------------------
 [radkit]
 
-# RADKit ControlAPI base URL (default: https://localhost:8081/api/v1)
-# base_url = "https://localhost:8081/api/v1"
+## RADKit ControlAPI base URL (default: "https://localhost:8081/api/v1").
+#base_url = "https://localhost:8081/api/v1"
 
-# RADKit admin username (optional — can also be set via RADKIT_ADMIN_USER env var).
-# admin_user = "superadmin"
+## REQUIRED. RADKit admin username — set here or via RADKIT_ADMIN_USER.
+## No default; the value below is only an example.
+#admin_user = "superadmin"
 
-# SSH username assigned to all imported devices (optional — can also be set
-# via RADKIT_SSH_USER env var).
-#
-# NOTE: this value is only applied to a device when it is first created in the
-# RADKit inventory. Changing it here does NOT touch devices that already exist.
-# After changing ssh_user, run `catc-sync --update-credentials` once to push the
-# new username (together with the current password) onto all existing managed
-# devices.
-# ssh_user = "netops"
+## REQUIRED. SSH username assigned to all imported devices — set here or via
+## RADKIT_SSH_USER. No default; the value below is only an example.
+##
+## NOTE: applied to a device only when it is first created in the RADKit
+## inventory. Changing it here does NOT touch existing devices. After changing
+## ssh_user, run `catc-sync --update-credentials` once to push the new username
+## (together with the current password) onto all existing managed devices.
+#ssh_user = "netops"
 
-# ---------------------------------------------------------------------------
-# Device name filters
-# ---------------------------------------------------------------------------
+
+## ---------------------------------------------------------------------------
+## Device name filters
+## ---------------------------------------------------------------------------
 [filters]
 
-# Regex patterns applied to the raw CatC hostname / FQDN before name
-# normalisation.  Matching uses re.search with re.IGNORECASE — patterns match
-# anywhere in the string; use ^ / $ anchors to restrict to start / end.
-#
-# If whitelist is non-empty, only devices whose hostname matches at least one
-# pattern are imported.  Blacklist always takes precedence over whitelist.
-#
-# IMPORTANT: Narrowing filters will cause previously-synced devices that no
-# longer match to be deleted from RADKit — the same as if they were removed
-# from Catalyst Center.  Use --dry-run to preview the effect before applying
-# filter changes.
+## Regex patterns applied to the raw CatC hostname / FQDN before name
+## normalisation. Matching uses re.search with re.IGNORECASE — patterns match
+## anywhere in the string; use ^ / $ anchors to restrict to start / end.
+##
+## If whitelist is non-empty, only devices whose hostname matches at least one
+## pattern are imported. Blacklist always takes precedence over whitelist.
+##
+## IMPORTANT: narrowing these filters will cause previously-synced devices that
+## no longer match to be DELETED from RADKit — the same as if they had been
+## removed from Catalyst Center. Use --dry-run to preview before applying.
 
-whitelist = []     # e.g. ["^router-", "^sw-"]
-blacklist = []     # e.g. ["\\.lab\\.", "^test"]
+## Import only devices matching one of these patterns (default: [] — import all).
+#whitelist = ["^router-", "^sw-"]
 
-# ---------------------------------------------------------------------------
-# Metadata
-# ---------------------------------------------------------------------------
+## Never import devices matching one of these patterns (default: []).
+#blacklist = ["\\.lab\\.", "^test"]
+
+
+## ---------------------------------------------------------------------------
+## Metadata
+## ---------------------------------------------------------------------------
 [metadata]
 
-# Key used to track ownership in RADKit device metadata.
-# Changing this after the first sync will orphan previously managed devices.
-# source_key = "catc_source"
+## Key used to track ownership in RADKit device metadata
+## (default: "catc_source").
+## Changing this after the first sync will orphan previously managed devices.
+#source_key = "catc_source"
 
-# CatC device fields to sync as RADKit metadata.  Only stable inventory
-# fields are included by default — volatile fields like upTime or
-# lastUpdateTime are excluded to avoid unnecessary update churn.
-# Override with the full list of CatC attribute names you want synced.
-# fields = [
-#     "id",
-#     "hostname",
-#     "managementIpAddress",
-#     "platformId",
-#     "serialNumber",
-#     "softwareType",
-#     "softwareVersion",
-#     "family",
-#     "series",
-#     "type",
-#     "role",
-#     "macAddress",
-#     "snmpLocation",
-#     "managementState",
-# ]
+## CatC device fields synced as RADKit metadata. Only stable inventory fields
+## are included by default — volatile ones such as upTime or lastUpdateTime are
+## excluded to avoid unnecessary update churn. Setting this replaces the list
+## entirely, so repeat any defaults you want to keep.
+#fields = [
+#    "id", "hostname", "managementIpAddress", "platformId", "serialNumber",
+#    "softwareType", "softwareVersion", "family", "series", "type", "role",
+#    "macAddress", "snmpLocation", "managementState",
+#]
 
-# ---------------------------------------------------------------------------
-# Labels
-# ---------------------------------------------------------------------------
+
+## ---------------------------------------------------------------------------
+## Labels
+## ---------------------------------------------------------------------------
 [labels]
 
-# List of label names to automatically assign to all imported devices.
-# Labels are added on device creation and also backfilled onto existing
-# managed devices during updates. The sync will never remove labels that are
-# already present on devices — it only ensures configured labels are present.
-#
-# If a configured label doesn't exist in RADKit, it will be automatically
-# created with the default color #000000.
-#
-# To add labels to devices, uncomment and populate the names list:
-# names = ["catc-managed", "sr12345"]
+## Label names automatically assigned to all imported devices (default: []).
+## Labels are added on device creation and backfilled onto existing managed
+## devices during updates. The sync never removes labels that are already
+## present — it only ensures the configured ones exist.
+##
+## A configured label that does not exist in RADKit is created automatically
+## with the default colour #000000.
+#names = ["catc-managed", "campus"]
 
-names = []
 
-# ---------------------------------------------------------------------------
-# Sync behaviour
-# ---------------------------------------------------------------------------
+## ---------------------------------------------------------------------------
+## Sync behaviour
+## ---------------------------------------------------------------------------
 [sync]
 
-# Automatically adopt unmanaged RADKit devices that share a name with a CatC
-# device (default: false).  When false, such conflicts are skipped with a
-# warning.  Can also be overridden per-run with the -A / --adopt-existing flag.
-# adopt_existing = false
+## Automatically adopt unmanaged RADKit devices that share a name with a CatC
+## device (default: false). When false, such conflicts are skipped with a
+## warning. Override per-run with the -A / --adopt-existing flag.
+#adopt_existing = false
 
-# Number of devices sent per bulk RADKit ControlAPI call when adding, updating,
-# or deleting devices (default: 500, max: 50000).  Larger batches mean fewer
-# round-trips (faster) but coarser per-batch error/progress logging.  Devices
-# are chunked into batches of this size.
-# batch_size = 500
+## Devices sent per bulk RADKit ControlAPI call when adding, updating or
+## deleting (default: 500, max: 50000). Larger batches mean fewer round-trips
+## (faster) but coarser per-batch error and progress logging.
+#batch_size = 500
 
-# Maximum number of devices that may be RENAMED in a single run (default: 10).
-# Set to -1 to disable the guard entirely, or 0 to block every rename.
-#
-# Renames are applied in place (RADKit's UpdateDevice.name), so device UUIDs
-# and everything attached to them are preserved.  The guard exists because a
-# mass rename almost always means [sync.naming] was changed by accident rather
-# than that hundreds of devices were renamed in Catalyst Center — and anything
-# referring to those devices by name will need updating.  The run is aborted
-# before anything is applied.  Override for a single run with --allow-renames
-# (after reviewing with --dry-run).
-# rename_limit = 10
+## Maximum number of devices that may be RENAMED in a single run (default: 10).
+## Set to -1 to disable the guard entirely, or 0 to block every rename.
+##
+## Renames are applied in place (RADKit's UpdateDevice.name), so device UUIDs
+## and everything attached to them are preserved. The guard exists because a
+## mass rename almost always means [sync.naming] was changed by accident rather
+## than that hundreds of devices were renamed in Catalyst Center — and anything
+## referring to those devices by name will need updating. The run is aborted
+## before anything is applied. Override for a single run with --allow-renames,
+## after reviewing with --dry-run.
+#rename_limit = 10
 
-# ---------------------------------------------------------------------------
-# Device naming
-# ---------------------------------------------------------------------------
+
+## ---------------------------------------------------------------------------
+## Device naming
+## ---------------------------------------------------------------------------
 [sync.naming]
 
-# How CatC hostnames are converted into RADKit device names.
-#
-#   "fqdn"  (default) — full FQDN:   router1.dc1.example.com -> router1-dc1-example-com
-#   "short"           — first label: router1.dc1.example.com -> router1
-#
-# "short" is convenient for a flat, single-domain estate, but the same short
-# name in two domains will collide.  Collisions are skipped with a warning
-# (lowest CatC device id wins) and reported in the run summary.
-#
-# Whatever this is set to, the result is always forced to comply with RADKit
-# naming rules: lower-case, only [a-z0-9-], no consecutive dashes, and no
-# leading or trailing dash.
-#
-# WARNING: changing this renames every managed device (in place — UUIDs are
-# preserved).  The rename guard (sync.rename_limit) will abort the run; preview
-# with --dry-run, then re-run with --allow-renames once you are happy.
-# mode = "fqdn"
+## How CatC hostnames are converted into RADKit device names
+## (default: "fqdn").
+##
+##   "fqdn"   full FQDN:   router1.dc1.example.com -> router1-dc1-example-com
+##   "short"  first label: router1.dc1.example.com -> router1
+##
+## "short" is convenient for a flat, single-domain estate, but the same short
+## name in two domains will collide. Collisions are skipped with a warning
+## (lowest CatC device id wins) and reported in the run summary.
+##
+## Whatever this is set to, the result is always forced to comply with RADKit
+## naming rules: lower-case, only [a-z0-9-], no consecutive dashes, and no
+## leading or trailing dash.
+##
+## WARNING: changing this renames every managed device (in place — UUIDs are
+## preserved). The rename guard (sync.rename_limit) will abort the run; preview
+## with --dry-run, then re-run with --allow-renames once you are happy.
+#mode = "fqdn"
 
-# Domain suffixes stripped from the hostname before `mode` is applied.
-# Matching is case-insensitive and the longest match wins; entries may be
-# written with or without the leading dot.
-#
-#   strip_domains = [".example.com"]
-#   router1.dc1.example.com -> router1-dc1
-#   router1.partner.net     -> router1-partner-net   (no suffix matched)
-#
-# Note this can reintroduce collisions when the same prefix exists under two
-# different stripped domains.
-# strip_domains = []
+## Domain suffixes stripped from the hostname before `mode` is applied
+## (default: []). Matching is case-insensitive and the longest match wins;
+## entries may be written with or without the leading dot.
+##
+##   strip_domains = [".example.com"]
+##   router1.dc1.example.com -> router1-dc1
+##   router1.partner.net     -> router1-partner-net   (no suffix matched)
+##
+## Note this can reintroduce collisions when the same prefix exists under two
+## different stripped domains.
+#strip_domains = [".example.com"]

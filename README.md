@@ -91,41 +91,63 @@ The easiest way to get started is to use the `--init` flag, which generates a te
 catc-sync --init
 ```
 
-This creates `catc_sync.toml` with all available options documented. Edit it for your environment and you're ready to go.
+This creates `catc_sync.toml` with all available options documented. Optional settings
+are commented out at their default value, so you only need to uncomment what you
+actually want to change. Note that the generated file is not runnable as-is: you still
+have to supply cluster URLs, and the three usernames and three passwords described in
+step 3. Edit it for your environment and you're ready to go.
 
 ### 2. Edit the config file manually
 
 If you prefer to create the config file yourself:
 
+`catc.clusters` must be set here. The three usernames are also required, but may come
+from either this file or the environment (see step 3) — they are shown here for
+completeness; omit them if you prefer to set `CATC_USER`, `RADKIT_ADMIN_USER` and
+`RADKIT_SSH_USER` in the environment. Everything else has a built-in default.
+
+Required settings are shown uncommented below; optional ones are commented out at
+their default value. In `catc_sync.toml.example` the same distinction is made with
+`##` for explanatory prose and a bare `#` for a commented-out setting.
+
 ```toml
 [catc]
+## REQUIRED
 clusters = [
     "https://catc1.example.com",
     "https://catc2.example.com",
 ]
+## REQUIRED (or set CATC_USER in the environment)
+user = "admin"
 
 [radkit]
-# Optional: override default RADKit ControlAPI URL
-# base_url = "https://localhost:8081/api/v1"
+## REQUIRED (or set RADKIT_ADMIN_USER in the environment)
+admin_user = "superadmin"
+## REQUIRED (or set RADKIT_SSH_USER in the environment)
+ssh_user = "netops"
+
+## RADKit ControlAPI base URL.
+#base_url = "https://localhost:8081/api/v1"
 
 [filters]
-# Regex patterns applied to raw CatC hostnames (optional)
-whitelist = []              # e.g. ["^router-", "^sw-"]
-blacklist = []              # e.g. ["\\.lab\\.", "^test"]
+## Regex patterns applied to raw CatC hostnames.
+#whitelist = ["^router-", "^sw-"]
+#blacklist = ["\\.lab\\.", "^test"]
 
 [metadata]
-# Optional: customize metadata handling
-# source_key = "catc_source"    # ownership marker in device metadata
-# fields = ["hostname", "serialNumber"]  # CatC fields to sync as metadata
+## Ownership marker in device metadata.
+#source_key = "catc_source"
+## CatC fields to sync as metadata (replaces the default list).
+#fields = ["hostname", "serialNumber"]
 
 [sync]
-# Optional: abort if a run would rename more than N devices (-1 disables)
-# rename_limit = 10
+## Abort if a run would rename more than N devices (-1 disables).
+#rename_limit = 10
 
 [sync.naming]
-# Optional: how CatC hostnames become RADKit device names
-# mode = "fqdn"                 # "fqdn" (default) or "short"
-# strip_domains = [".example.com"]
+## How CatC hostnames become RADKit device names: "fqdn" or "short".
+#mode = "fqdn"
+#strip_domains = [".example.com"]
 ```
 
 #### Device naming

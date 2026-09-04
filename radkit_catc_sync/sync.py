@@ -433,7 +433,10 @@ def run_sync(
     filters = FilterSet.from_lists(config.device_whitelist, config.device_blacklist)
 
     if not config.catc_clusters:
-        raise ValueError("CATC_CLUSTERS is empty — add at least one cluster URL to the config.")
+        raise ValueError(
+            "No Catalyst Center clusters configured — add at least one URL to "
+            "'clusters' in the [catc] section of catc_sync.toml."
+        )
 
     synced_hostnames = {urlparse(u).hostname for u in config.catc_clusters}
 
