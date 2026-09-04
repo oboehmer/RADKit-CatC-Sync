@@ -128,8 +128,16 @@ def build_update_device(
     metadata_fields: frozenset[str],
     meta_source_key: str,
     labels_to_add: list[str] | None = None,
+    new_name: str | None = None,
 ) -> UpdateDevice:
-    """Build an UpdateDevice model for updating in RADKit."""
+    """Build an UpdateDevice model for updating in RADKit.
+
+    Args:
+        new_name: If given, rename the device to this name. The device is
+            identified by ``existing_uuid``, so a rename preserves the UUID and
+            every piece of RADKit-side state attached to it. Left unset, the
+            name field is omitted and RADKit leaves the current name alone.
+    """
     if labels_to_add is None:
         labels_to_add = []
 
@@ -147,6 +155,9 @@ def build_update_device(
         "description": f"Imported from CatC: {catc_hostname}",
         "meta_data_update": meta_update,
     }
+
+    if new_name is not None:
+        kwargs["name"] = new_name
 
     if update_credentials:
         kwargs["terminal"] = UpdateTerminal(

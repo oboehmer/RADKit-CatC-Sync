@@ -12,7 +12,8 @@ from radkit_catc_sync.builders import build_metadata, get_device_type
 from radkit_catc_sync.catc_client import CatCClient
 from radkit_catc_sync.config import AppConfig
 from radkit_catc_sync.models import CatCDevice, StoredRadkitDevice
-from radkit_catc_sync.sync import normalise_name, run_sync
+from radkit_catc_sync.naming import NameMode, NameNormaliser
+from radkit_catc_sync.sync import run_sync
 
 # ---------------------------------------------------------------------------
 # Test scenario dataclass
@@ -37,6 +38,10 @@ class Scenario:
     # Filters
     whitelist: tuple[str, ...] = ()
     blacklist: tuple[str, ...] = ()
+
+    # Device naming mode ([sync.naming] mode). Fixtures default to "short" so
+    # expected names stay readable; "fqdn" scenarios set this explicitly.
+    name_mode: str = "short"
 
     # Flags
     adopt: bool = False
@@ -102,6 +107,7 @@ def _build_catc_devices(
     """Build CatCDevice list from (hostname, ip) specs."""
     return [
         CatCDevice(
+            device_id=None,
             hostname=h,
             management_ip=ip,
             software_type="IOS-XE",
@@ -116,6 +122,7 @@ def _build_managed(
     specs: tuple[tuple[str, str], ...],
     catc_devices: list[CatCDevice] | None = None,
     steady_state: bool = False,
+    name_mode: str = "short",
 ) -> dict[str, StoredRadkitDevice]:
     """Build managed dict.
 
@@ -128,7 +135,7 @@ def _build_managed(
     if steady_state and catc_devices:
         for dev in catc_devices:
             if dev.hostname:
-                catc_lookup[normalise_name(dev.hostname)] = dev
+                catc_lookup[NameNormaliser(mode=NameMode(name_mode))(dev.hostname)] = dev
 
     _default = AppConfig()
     for name, source in specs:
@@ -193,6 +200,31 @@ SCENARIOS = [
         exp_added=3,
         exp_create_calls=3,
         exp_created_names=("r1", "r2", "r3"),
+    ),
+    # --- Default fqdn naming end-to-end ---
+    Scenario(
+        id="fqdn-naming-default",
+        name_mode="fqdn",
+        catc=(
+            ("r1.dc1.example.com", "10.0.0.1"),
+            ("r1.dc2.example.com", "10.0.0.2"),  # same short name, different domain
+        ),
+        exp_added=2,
+        exp_create_calls=2,
+        exp_created_names=("r1-dc1-example-com", "r1-dc2-example-com"),
+    ),
+    # --- Same inventory under short naming: the two collide ---
+    Scenario(
+        id="short-naming-collides",
+        name_mode="short",
+        catc=(
+            ("r1.dc1.example.com", "10.0.0.1"),
+            ("r1.dc2.example.com", "10.0.0.2"),
+        ),
+        exp_added=1,
+        exp_create_calls=1,
+        exp_created_names=("r1",),
+        exp_skipped=1,
     ),
     # --- Steady state (unchanged) ---
     Scenario(
@@ -430,11 +462,16 @@ def test_sync_scenario(scenario: Scenario, mock_controlapi: MagicMock) -> None:
         device_whitelist=list(scenario.whitelist),
         device_blacklist=list(scenario.blacklist),
         adopt_existing=scenario.adopt,
+        # Scenario fixtures are written with short device names for readability;
+        # the fqdn default is covered by test_helpers and test_fetch.
+        name_mode=scenario.name_mode,
     )
 
     # Build test data
     catc_devices = _build_catc_devices(scenario.catc)
-    managed = _build_managed(scenario.managed, catc_devices, scenario.steady_state)
+    managed = _build_managed(
+        scenario.managed, catc_devices, scenario.steady_state, scenario.name_mode
+    )
     unmanaged = _build_unmanaged(scenario.unmanaged)
 
     # Patch CatC client + fetch_radkit_devices, let fetch_fresh_inventory run naturally

@@ -26,11 +26,15 @@ def make_device() -> Callable[..., CatCDevice]:
         software_type: str | None = "IOS-XE",
         series: str | None = None,
         raw_extra: dict[str, Any] | None = None,
+        device_id: str | None = None,
     ) -> CatCDevice:
         raw: dict[str, Any] = {"hostname": hostname, "managementIpAddress": ip}
+        if device_id is not None:
+            raw["id"] = device_id
         if raw_extra:
             raw.update(raw_extra)
         return CatCDevice(
+            device_id=device_id,
             hostname=hostname,
             management_ip=ip,
             software_type=software_type,
@@ -111,6 +115,9 @@ def run_sync(mock_controlapi: MagicMock) -> Callable[..., tuple[Stats, MagicMock
         adopt: bool = False,
         dry_run: bool = False,
         update_pw: bool = False,
+        name_mode: str = "short",
+        rename_limit: int = 10,
+        allow_renames: bool = False,
     ) -> tuple[Stats, MagicMock]:
         if catc_devices is None:
             catc_devices = []
@@ -122,6 +129,10 @@ def run_sync(mock_controlapi: MagicMock) -> Callable[..., tuple[Stats, MagicMock
             device_whitelist=[],
             device_blacklist=[],
             adopt_existing=adopt,
+            # Fixtures use short device names for readability; the "fqdn"
+            # default is exercised in test_helpers / test_fetch.
+            name_mode=name_mode,
+            rename_limit=rename_limit,
         )
 
         # Convert dict-based test fixtures into StoredRadkitDevice objects.
@@ -154,6 +165,7 @@ def run_sync(mock_controlapi: MagicMock) -> Callable[..., tuple[Stats, MagicMock
                 config=config,
                 dry_run=dry_run,
                 update_credentials=update_pw,
+                allow_renames=allow_renames,
                 catc_user=_SYNC_CREDS["catc_user"],
                 catc_password=_SYNC_CREDS["catc_password"],
                 radkit_admin_user=_SYNC_CREDS["radkit_admin_user"],

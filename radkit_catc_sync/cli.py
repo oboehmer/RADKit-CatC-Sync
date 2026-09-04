@@ -10,7 +10,7 @@ import sys
 from pathlib import Path
 
 from .config import load_config, load_env_file, load_env_vars
-from .sync import CatCInventoryError, run_sync
+from .sync import CatCInventoryError, RenameGuardError, run_sync
 
 logger = logging.getLogger(__name__)
 
@@ -133,6 +133,15 @@ def main() -> int:
         help="Overwrite SSH username and password on existing managed devices.",
     )
     parser.add_argument(
+        "--allow-renames",
+        action="store_true",
+        help=(
+            "Allow this run to rename more devices than sync.rename_limit. "
+            "Renames are applied in place, so device UUIDs are preserved. "
+            "Preview with --dry-run first."
+        ),
+    )
+    parser.add_argument(
         "-A",
         "--adopt-existing",
         action="store_true",
@@ -181,6 +190,9 @@ def main() -> int:
         if args.no_verify_tls:
             logger.error("--init cannot be used with -k/--no-verify-tls")
             return 1
+        if args.allow_renames:
+            logger.error("--init cannot be used with --allow-renames")
+            return 1
         return init_config()
 
     # Load configuration from TOML file
@@ -215,6 +227,7 @@ def main() -> int:
             config=config,
             dry_run=args.dry_run,
             update_credentials=args.update_credentials,
+            allow_renames=args.allow_renames,
             catc_user=env["CATC_USER"],
             catc_password=env["CATC_PASSWORD"],
             radkit_admin_user=env["RADKIT_ADMIN_USER"],
@@ -222,6 +235,10 @@ def main() -> int:
             ssh_user=env["RADKIT_SSH_USER"],
             ssh_password=env["RADKIT_SSH_PASSWORD"],
         )
+    except RenameGuardError as exc:
+        logger.error("Aborting sync: %s", exc)
+        logger.error("No changes were made.")
+        return 1
     except CatCInventoryError as exc:
         logger.error("Aborting sync: %s", exc)
         logger.error("No changes were made. Fix CatC connectivity/credentials and retry.")

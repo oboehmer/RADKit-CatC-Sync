@@ -9,12 +9,14 @@ Synchronise Cisco Catalyst Center (formerly DNA Center) device inventory into a 
 - Tracks ownership via `catc_source` metadata — only manages what it imports
 - Deletion is scoped: only removes devices from clusters that were synced this run
 - Whitelist/blacklist regex filters on device names
-- Reports how many devices were fetched per cluster and why devices were ignored (blacklist, whitelist miss, no hostname, collisions, unmanaged)
+- Configurable device naming: keep the full FQDN (default) or just the short hostname, with optional domain-suffix stripping
+- Reports how many devices were fetched per cluster and why devices were ignored (blacklist, whitelist miss, no hostname, unnameable hostname, collisions, unmanaged)
 - Fetches CatC clusters and RADKit inventory in parallel, and applies add/update/delete changes via batched (bulk) ControlAPI calls for faster syncs
 - Narrowing filters removes previously-synced devices from RADKit (same as devices removed from CatC)
-- Cross-cluster hostname collision detection (first cluster wins, warning logged)
+- Hostname collision detection (first cluster wins; within a cluster the lowest CatC device id wins, so results are reproducible across runs)
 - `--dry-run` mode to preview all changes before applying them
 - `--adopt-existing` to take ownership of manually-added RADKit devices
+- Renames devices in place when a hostname changes (UUID and labels preserved), with a `sync.rename_limit` guard against accidental mass renames
 - `--update-credentials` to refresh SSH credentials on existing devices in RADKit inventory
 - Loads `.env` and `catc_sync.toml` from the current working directory
 
@@ -115,7 +117,82 @@ blacklist = []              # e.g. ["\\.lab\\.", "^test"]
 # Optional: customize metadata handling
 # source_key = "catc_source"    # ownership marker in device metadata
 # fields = ["hostname", "serialNumber"]  # CatC fields to sync as metadata
+
+[sync]
+# Optional: abort if a run would rename more than N devices (-1 disables)
+# rename_limit = 10
+
+[sync.naming]
+# Optional: how CatC hostnames become RADKit device names
+# mode = "fqdn"                 # "fqdn" (default) or "short"
+# strip_domains = [".example.com"]
 ```
+
+#### Device naming
+
+RADKit device names must be lower-case and contain only `[a-z0-9-]`, with no
+consecutive dashes and no leading or trailing dash. That sanitisation always
+runs and is not configurable. What *is* configurable is how much of the CatC
+hostname is carried into the name:
+
+| `mode`             | `router1.dc1.example.com` becomes |
+| ------------------ | --------------------------------- |
+| `"fqdn"` (default) | `router1-dc1-example-com`         |
+| `"short"`          | `router1`                         |
+
+`strip_domains` removes a domain suffix before `mode` is applied. Matching is
+case-insensitive, the longest configured suffix wins, and the leading dot is
+optional. With `strip_domains = [".example.com"]`:
+
+```
+router1.dc1.example.com  ->  router1-dc1
+router1.partner.net      ->  router1-partner-net   (no suffix matched)
+```
+
+`"fqdn"` is the default because it is lossless: the same short hostname in two
+different domains stays distinct. Under `"short"` (or with an aggressive
+`strip_domains`) those devices collide — the collision is skipped with a
+warning and reported in the run summary, but only one of the devices is synced.
+
+> **Changing these settings renames every managed device.** Renames are applied
+> in place, so device UUIDs and RADKit-side state are preserved — but anything
+> that refers to these devices by name will need updating. The rename guard
+> below stops the run before anything is applied.
+
+#### Rename guard
+
+A device whose name changes looks like a delete plus an add. It is detected as
+a rename when the device disappearing under one name and the device appearing
+under another share a Catalyst Center device id (or, if `id` is not among the
+synced `metadata.fields`, a management IP).
+
+Renames are applied **in place** via RADKit's `UpdateDevice.name`, not as a
+delete followed by a re-create — the device keeps its UUID, its labels, and
+everything else attached to it. They are logged individually and reported on
+their own line in the summary.
+
+If a single run would rename more than `sync.rename_limit` devices (default
+`10`), the run is **aborted before any change is applied**:
+
+```
+$ catc-sync
+ERROR Aborting sync: Refusing to rename 1048 device(s) in one run
+      (rename_limit = 10): ...
+ERROR No changes were made.
+```
+
+The guard exists because a `[sync.naming]` change renames the *entire* managed
+inventory at once, whereas genuine hostname changes in Catalyst Center trickle
+in a few at a time — and anything referring to those devices by name (scripts,
+saved sessions, runbooks) needs to know. To proceed deliberately:
+
+```bash
+catc-sync --dry-run          # review every rename
+catc-sync --allow-renames    # apply them
+```
+
+Set `rename_limit = 0` to require `--allow-renames` for any rename at all, or
+`-1` to disable the guard.
 
 See `catc_sync.toml.example` for complete documentation and defaults. You can also download it from GitHub if needed:
 
@@ -174,6 +251,7 @@ catc-sync [OPTIONS]
 | `--dry-run` | | Preview all changes without applying them |
 | `--update-credentials` | | Overwrite SSH username and password on existing managed devices |
 | `--adopt-existing` | `-A` | Take ownership of unmanaged RADKit devices matching CatC names |
+| `--allow-renames` | | Apply renames that exceed `sync.rename_limit` (review with `--dry-run` first) |
 | `--no-verify-tls` | `-k` | Disable TLS certificate verification for Catalyst Center |
 | `--verbose` | `-v` | Enable debug-level logging |
 | `--help` | `-h` | Show help message |
@@ -322,6 +400,7 @@ radkit_catc_sync/
   config.py           # Configuration loading and validation
   models.py           # Data models (CatCDevice, StoredRadkitDevice)
   filters.py          # Device name filtering (FilterSet class)
+  naming.py           # CatC hostname -> RADKit device name conversion
   catc_client.py      # Catalyst Center HTTP client
   builders.py         # RADKit device model builders
   stats.py            # Statistics tracking
@@ -334,6 +413,7 @@ tests/
 Each module has a clear responsibility:
 - **config.py** — Load and validate settings (immutable `AppConfig` dataclass)
 - **filters.py** — Regex-based device name matching (`FilterSet` class)
+- **naming.py** — Configurable hostname transform plus the fixed RADKit sanitiser
 - **models.py** — Type-safe data structures
 - **sync.py** — Core orchestration logic
 - **cli.py** — User interaction and I/O

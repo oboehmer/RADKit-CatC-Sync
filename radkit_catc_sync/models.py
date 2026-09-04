@@ -13,6 +13,7 @@ class CatCDevice:
     Parsed directly from the /api/v1/network-device JSON response.
     """
 
+    device_id: str | None  # CatC 'id' (UUID); used as the stable sort key
     hostname: str | None
     management_ip: str
     software_type: str | None
@@ -23,6 +24,7 @@ class CatCDevice:
     def from_dict(cls, data: dict[str, Any]) -> CatCDevice:
         """Create a CatCDevice from a Catalyst Center API response dict."""
         return cls(
+            device_id=data.get("id"),
             hostname=data.get("hostname"),
             management_ip=data["managementIpAddress"],
             software_type=data.get("softwareType"),

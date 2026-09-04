@@ -18,9 +18,22 @@ from .config import AppConfig
 from .filters import FilterDecision, FilterSet
 from .labels import compute_labels_to_add, ensure_labels_exist
 from .models import CatCDevice, StoredRadkitDevice
+from .naming import NameNormaliser
 from .stats import SkipReason, Stats
 
 logger = logging.getLogger(__name__)
+
+
+class RenameGuardError(RuntimeError):
+    """Raised when a run would rename more managed devices than ``rename_limit``.
+
+    Renames are applied in place via ``UpdateDevice.name``, so the device UUID
+    and everything attached to it survive. They are still worth gating: a mass
+    rename is almost always an accidental change to ``[sync.naming]`` rather
+    than a genuine bulk hostname change in Catalyst Center, and anything that
+    refers to these devices by name (scripts, saved sessions, runbooks) will
+    need updating. The run is aborted before anything is applied.
+    """
 
 
 class CatCInventoryError(RuntimeError):
@@ -31,27 +44,57 @@ class CatCInventoryError(RuntimeError):
     """
 
 
-def normalise_name(fqdn: str) -> str:
-    """
-    Normalize a hostname to RADKit naming requirements.
+def _identity_of_stored(device: StoredRadkitDevice) -> str | None:
+    """Best available stable identity for a device already in RADKit.
 
-    RADKit device names must contain only lower-case letters, digits and
-    dashes and must not start or end with a dash.
+    Prefers the Catalyst Center device id carried in metadata; falls back to
+    the management IP when ``id`` is not among the synced metadata fields.
+    """
+    return device.metadata.get("id") or device.host or None
+
+
+def _identity_of_catc(device: CatCDevice) -> str | None:
+    """Best available stable identity for a device fetched from Catalyst Center."""
+    return device.device_id or device.management_ip or None
+
+
+def detect_renames(
+    managed: dict[str, StoredRadkitDevice],
+    fresh: dict[str, tuple[CatCDevice, str]],
+    gone: list[str],
+    to_add: list[str],
+) -> list[tuple[str, str]]:
+    """
+    Identify delete/add pairs that are really the same device under a new name.
+
+    A device that disappears from the managed set while the *same physical
+    device* reappears under a different name is a rename, not a genuine
+    delete plus a genuine add. Devices are matched on their Catalyst Center
+    id (or management IP as a fallback). Callers apply these as in-place
+    updates rather than a delete followed by a create.
 
     Args:
-        fqdn: Fully-qualified domain name or hostname.
+        managed: Devices currently owned by this tool, keyed by RADKit name.
+        fresh: Importable CatC devices, keyed by their new RADKit name.
+        gone: Managed names scheduled for deletion.
+        to_add: New names scheduled for creation.
 
     Returns:
-        Normalized name suitable for RADKit.
+        List of (old_name, new_name) pairs, sorted by old name.
     """
-    import re
+    added_by_identity: dict[str, str] = {}
+    for name in to_add:
+        identity = _identity_of_catc(fresh[name][0])
+        if identity:
+            added_by_identity[identity] = name
 
-    short = fqdn.split(".")[0].lower()
-    # Replace any character that isn't a-z, 0-9 or dash with a dash
-    sanitised = re.sub(r"[^a-z0-9-]", "-", short)
-    # Collapse consecutive dashes and strip leading/trailing dashes
-    sanitised = re.sub(r"-{2,}", "-", sanitised).strip("-")
-    return sanitised
+    renames: list[tuple[str, str]] = []
+    for old_name in gone:
+        identity = _identity_of_stored(managed[old_name])
+        if identity and identity in added_by_identity:
+            renames.append((old_name, added_by_identity[identity]))
+
+    return sorted(renames)
 
 
 def _apply_bulk(
@@ -191,6 +234,7 @@ def _fetch_one_cluster(
 def _merge_cluster_inventories(
     cluster_results: list[tuple[str, list[CatCDevice]]],
     filters: FilterSet,
+    normalise_name: NameNormaliser,
     stats: Stats,
 ) -> dict[str, tuple[CatCDevice, str]]:
     """
@@ -203,6 +247,7 @@ def _merge_cluster_inventories(
     Args:
         cluster_results: List of (catc_hostname, raw devices) in cluster order.
         filters: Filter set for device name matching.
+        normalise_name: Configured CatC-hostname -> RADKit-name converter.
         stats: Stats tracker (fetched counts + skip reasons recorded here).
 
     Returns:
@@ -216,7 +261,11 @@ def _merge_cluster_inventories(
         ) + len(devices)
         stats.fetched_total += len(devices)
 
-        for device in devices:
+        # Sort by CatC device id so that "first wins" on a name collision is
+        # reproducible across runs: the CatC API does not guarantee a stable
+        # ordering, and an unstable winner would cause the surviving device's
+        # host/metadata to flap on every sync.
+        for device in sorted(devices, key=lambda d: (d.device_id is None, d.device_id or "")):
             if device.hostname is None:
                 logger.info("Skipping device without hostname at %s", device.management_ip)
                 stats.record_skip(SkipReason.NO_HOSTNAME)
@@ -234,6 +283,15 @@ def _merge_cluster_inventories(
                 continue
 
             radkit_name = normalise_name(device.hostname)
+            if not radkit_name:
+                msg = (
+                    f"Device '{device.hostname}' on {catc_hostname} normalises to an "
+                    f"empty name — skipping."
+                )
+                logger.warning(msg)
+                stats.warnings.append(msg)
+                stats.record_skip(SkipReason.UNNAMEABLE)
+                continue
 
             if radkit_name in fresh:
                 existing_dev, existing_source = fresh[radkit_name]
@@ -303,13 +361,17 @@ def fetch_fresh_inventory(
         # Gather in submission (cluster) order; .result() re-raises → fail-fast.
         cluster_results = [future.result() for future in futures]
 
-    return _merge_cluster_inventories(cluster_results, filters, stats)
+    return _merge_cluster_inventories(
+        cluster_results, filters, NameNormaliser.from_config(config), stats
+    )
 
 
 def run_sync(
     config: AppConfig,
     dry_run: bool,
     update_credentials: bool,
+    allow_renames: bool = False,
+    *,
     catc_user: str,
     catc_password: str,
     radkit_admin_user: str,
@@ -325,6 +387,7 @@ def run_sync(
         dry_run: If True, don't modify RADKit.
         update_credentials: If True, overwrite the SSH username and password on
             existing devices.
+        allow_renames: If True, bypass the rename guard for this run.
         catc_user: Catalyst Center username.
         catc_password: Catalyst Center password.
         radkit_admin_user: RADKit admin username.
@@ -337,6 +400,8 @@ def run_sync(
 
     Raises:
         ValueError: If config is invalid (e.g., no clusters configured).
+        RenameGuardError: If the run would rename more than ``rename_limit``
+            devices and ``allow_renames`` is False.
     """
     stats = Stats()
 
@@ -382,8 +447,51 @@ def run_sync(
         if label_config_ids:
             logger.info("Configured labels: %s", ", ".join(label_config_ids.keys()))
 
+        # Step 2.75: detect renames. A device whose CatC hostname changed (or
+        # whose name changed because [sync.naming] changed) looks like a delete
+        # plus an add, but RADKit can rename in place via UpdateDevice.name.
+        # Renaming preserves the device UUID and everything attached to it, so
+        # these pairs are pulled out of the add/delete sets and applied as
+        # updates instead.
+        rename_candidates = [name for name in fresh if name not in managed]
+        rename_gone = [
+            name
+            for name, info in managed.items()
+            if name not in fresh and info.catc_source in synced_hostnames
+        ]
+        renames = detect_renames(managed, fresh, rename_gone, rename_candidates)
+        renamed_old = {old for old, _ in renames}
+        renamed_new = {new for _, new in renames}
+
+        if renames:
+            limit = config.rename_limit
+            for old_name, new_name in renames:
+                logger.info("Renaming device '%s' -> '%s'", old_name, new_name)
+            if not allow_renames and limit >= 0 and len(renames) > limit:
+                preview = ", ".join(f"{old} -> {new}" for old, new in renames[:5])
+                if len(renames) > 5:
+                    preview += f", ... ({len(renames) - 5} more)"
+                if dry_run:
+                    logger.warning(
+                        "[DRY-RUN] %d rename(s) exceed rename_limit = %d — a real run "
+                        "would abort. Re-run with --allow-renames to apply them.",
+                        len(renames),
+                        limit,
+                    )
+                else:
+                    raise RenameGuardError(
+                        f"Refusing to rename {len(renames)} device(s) in one run "
+                        f"(rename_limit = {limit}): {preview}. "
+                        f"Devices are renamed in place, so UUIDs and RADKit-side "
+                        f"state are preserved — but anything referring to these "
+                        f"devices by name will need updating. "
+                        f"If [sync.naming] changed unintentionally, revert it. "
+                        f"Otherwise review with --dry-run, then re-run with "
+                        f"--allow-renames."
+                    )
+
         # Step 3: build add / adopt batches
-        to_add = [name for name in fresh if name not in managed]
+        to_add = [name for name in fresh if name not in managed and name not in renamed_new]
         logger.info("Devices to add (or adopt): %d", len(to_add))
 
         new_devices: list[Any] = []
@@ -431,6 +539,30 @@ def run_sync(
             )
             new_devices.append(new_dev)
             new_names.append(name)
+
+        # Step 3.5: build rename batch (identified by the OLD device's UUID)
+        rename_devices: list[Any] = []
+        rename_names: list[str] = []
+        for old_name, new_name in renames:
+            device, catc_hostname = fresh[new_name]
+            existing = managed[old_name]
+            rename_devices.append(
+                build_update_device(
+                    device=device,
+                    catc_hostname=catc_hostname,
+                    existing_uuid=existing.uuid,
+                    update_credentials=update_credentials,
+                    ssh_user=ssh_user,
+                    ssh_password=ssh_password,
+                    metadata_fields=config.metadata_fields,
+                    meta_source_key=config.meta_source_key,
+                    labels_to_add=compute_labels_to_add(
+                        existing, config.device_labels, label_config_ids
+                    ),
+                    new_name=new_name,
+                )
+            )
+            rename_names.append(f"{old_name} -> {new_name}")
 
         # Step 4: build update batch for existing managed devices (only if changed)
         to_update = [name for name in fresh if name in managed]
@@ -510,13 +642,10 @@ def run_sync(
         # scoped to clusters that were actually synced this run. This includes
         # devices removed from CatC AND devices excluded by whitelist/blacklist
         # filters — narrowing filters removes previously-synced devices from RADKit.
-        gone = [
-            name
-            for name, info in managed.items()
-            if name not in fresh and info.catc_source in synced_hostnames
-        ]
+        gone = [name for name in rename_gone if name not in renamed_old]
         logger.info("Devices to delete: %d", len(gone))
         delete_uuids: list[Any] = [UUID(managed[name].uuid) for name in gone]
+        logger.info("Devices to rename: %d", len(rename_devices))
 
         # --- Apply all batches ---
         if dry_run:
@@ -533,6 +662,10 @@ def run_sync(
                     device.management_ip,
                 )
             stats.adopted += len(adopt_devices)
+
+            for label in rename_names:
+                logger.info("[DRY-RUN] Would rename device '%s'", label)
+            stats.renamed = len(rename_devices)
 
             # updates already logged per-device above
             stats.updated += len(update_devices)
@@ -556,6 +689,12 @@ def run_sync(
                     api.update_devices, adopt_devices, adopt_names, "adopt", config.batch_size
                 )
                 stats.adopted += adopted
+                stats.errors += errors
+            if rename_devices:
+                renamed, errors = _apply_bulk(
+                    api.update_devices, rename_devices, rename_names, "rename", config.batch_size
+                )
+                stats.renamed = renamed
                 stats.errors += errors
             if update_devices:
                 updated, errors = _apply_bulk(

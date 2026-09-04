@@ -61,6 +61,37 @@ class TestLoadConfig:
         config = load_config(toml)
         assert config.batch_size == 250
 
+    # ------------------------------------------------------------------
+    # [sync.naming]
+    # ------------------------------------------------------------------
+
+    def test_naming_defaults_to_fqdn(self) -> None:
+        assert AppConfig().name_mode == "fqdn"
+        assert AppConfig().name_strip_domains == []
+
+    def test_loads_naming_options(self, tmp_path: Path) -> None:
+        toml = tmp_path / "catc_sync.toml"
+        toml.write_text(
+            "[sync]\nbatch_size = 250\n\n"
+            '[sync.naming]\nmode = "short"\nstrip_domains = [".example.com"]\n'
+        )
+        config = load_config(toml)
+        assert config.name_mode == "short"
+        assert config.name_strip_domains == [".example.com"]
+        assert config.batch_size == 250  # sibling [sync] keys still parsed
+
+    def test_invalid_naming_mode_raises(self, tmp_path: Path) -> None:
+        toml = tmp_path / "catc_sync.toml"
+        toml.write_text('[sync.naming]\nmode = "hostname"\n')
+        with pytest.raises(ValueError, match="Invalid \\[sync.naming\\] mode"):
+            load_config(toml)
+
+    def test_invalid_strip_domains_raises(self, tmp_path: Path) -> None:
+        toml = tmp_path / "catc_sync.toml"
+        toml.write_text('[sync.naming]\nstrip_domains = "example.com"\n')
+        with pytest.raises(ValueError, match="strip_domains"):
+            load_config(toml)
+
     def test_loads_usernames_from_config(self, tmp_path: Path) -> None:
         toml = tmp_path / "catc_sync.toml"
         toml.write_text(

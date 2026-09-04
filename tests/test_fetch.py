@@ -11,7 +11,7 @@ import pytest
 from radkit_catc_sync.catc_client import CatCClient
 from radkit_catc_sync.config import AppConfig
 from radkit_catc_sync.filters import FilterSet
-from radkit_catc_sync.stats import Stats
+from radkit_catc_sync.stats import SkipReason, Stats
 from radkit_catc_sync.sync import (
     CatCInventoryError,
     fetch_fresh_inventory,
@@ -113,8 +113,8 @@ class TestFetchFreshInventory:
                 stats=stats,
             )
 
-        assert "router1" in fresh_dict
-        fresh_device, catc_hostname = fresh_dict["router1"]
+        assert "router1-example-com" in fresh_dict
+        fresh_device, catc_hostname = fresh_dict["router1-example-com"]
         assert fresh_device.hostname == "router1.example.com"
         assert catc_hostname == "catc1.example.com"
 
@@ -214,7 +214,10 @@ class TestFetchFreshInventory:
     def test_cross_cluster_collision_warned(self, make_device: Any) -> None:
         device1 = make_device("router1.a.example.com", "10.0.0.1")
         device2 = make_device("router1.b.example.com", "10.0.0.2")
-        config = AppConfig(catc_clusters=["https://catc1.example.com", "https://catc2.example.com"])
+        config = AppConfig(
+            catc_clusters=["https://catc1.example.com", "https://catc2.example.com"],
+            name_mode="short",
+        )
         filters = FilterSet.from_lists(config.device_whitelist, config.device_blacklist)
         stats = Stats()
 
@@ -237,6 +240,81 @@ class TestFetchFreshInventory:
         # Both normalise to "router1"
         assert len(fresh_dict) == 1
         assert any("collision" in w and "catc" in w.lower() for w in stats.warnings)
+
+    def test_collision_winner_is_lowest_device_id(self, make_device: Any) -> None:
+        """Collision resolution must not depend on CatC's return order.
+
+        The CatC API gives no ordering guarantee. If the winner depended on
+        response order, the surviving device's host/metadata would flap
+        between runs, causing endless update churn.
+        """
+        low = make_device("sw_core.example.com", "10.0.0.1", device_id="aaa")
+        high = make_device("sw-core.example.com", "10.0.0.2", device_id="zzz")
+        config = AppConfig(catc_clusters=["https://catc1.example.com"])
+        filters = FilterSet.from_lists([], [])
+
+        for order in ([low, high], [high, low]):
+            stats = Stats()
+            with (
+                patch.object(CatCClient, "authenticate"),
+                patch.object(CatCClient, "get_devices", return_value=order),
+            ):
+                fresh_dict = fetch_fresh_inventory(
+                    config=config,
+                    filters=filters,
+                    catc_user="user",
+                    catc_password="pass",
+                    stats=stats,
+                )
+
+            assert len(fresh_dict) == 1
+            device, _ = fresh_dict["sw-core-example-com"]
+            assert device.device_id == "aaa", f"winner flipped for input order {order}"
+
+    def test_unnameable_hostname_skipped(self, make_device: Any) -> None:
+        """A hostname with no usable characters is skipped, not crashed on."""
+        device = make_device("...", "10.0.0.1")
+        config = AppConfig(catc_clusters=["https://catc1.example.com"])
+        filters = FilterSet.from_lists([], [])
+        stats = Stats()
+
+        with (
+            patch.object(CatCClient, "authenticate"),
+            patch.object(CatCClient, "get_devices", return_value=[device]),
+        ):
+            fresh_dict = fetch_fresh_inventory(
+                config=config,
+                filters=filters,
+                catc_user="user",
+                catc_password="pass",
+                stats=stats,
+            )
+
+        assert fresh_dict == {}
+        assert stats.skipped_by_reason[SkipReason.UNNAMEABLE] == 1
+
+    def test_strip_domains_applied(self, make_device: Any) -> None:
+        device = make_device("router1.dc1.example.com", "10.0.0.1")
+        config = AppConfig(
+            catc_clusters=["https://catc1.example.com"],
+            name_strip_domains=[".example.com"],
+        )
+        filters = FilterSet.from_lists([], [])
+        stats = Stats()
+
+        with (
+            patch.object(CatCClient, "authenticate"),
+            patch.object(CatCClient, "get_devices", return_value=[device]),
+        ):
+            fresh_dict = fetch_fresh_inventory(
+                config=config,
+                filters=filters,
+                catc_user="user",
+                catc_password="pass",
+                stats=stats,
+            )
+
+        assert list(fresh_dict) == ["router1-dc1"]
 
     def test_cluster_fetch_failure_aborts(self, make_device: Any) -> None:
         """A cluster fetch failure must abort the whole sync, not continue.

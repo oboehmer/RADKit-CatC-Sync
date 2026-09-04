@@ -126,3 +126,50 @@ names = []
 # round-trips (faster) but coarser per-batch error/progress logging.  Devices
 # are chunked into batches of this size.
 # batch_size = 500
+
+# Maximum number of devices that may be RENAMED in a single run (default: 10).
+# Set to -1 to disable the guard entirely, or 0 to block every rename.
+#
+# Renames are applied in place (RADKit's UpdateDevice.name), so device UUIDs
+# and everything attached to them are preserved.  The guard exists because a
+# mass rename almost always means [sync.naming] was changed by accident rather
+# than that hundreds of devices were renamed in Catalyst Center — and anything
+# referring to those devices by name will need updating.  The run is aborted
+# before anything is applied.  Override for a single run with --allow-renames
+# (after reviewing with --dry-run).
+# rename_limit = 10
+
+# ---------------------------------------------------------------------------
+# Device naming
+# ---------------------------------------------------------------------------
+[sync.naming]
+
+# How CatC hostnames are converted into RADKit device names.
+#
+#   "fqdn"  (default) — full FQDN:   router1.dc1.example.com -> router1-dc1-example-com
+#   "short"           — first label: router1.dc1.example.com -> router1
+#
+# "short" is convenient for a flat, single-domain estate, but the same short
+# name in two domains will collide.  Collisions are skipped with a warning
+# (lowest CatC device id wins) and reported in the run summary.
+#
+# Whatever this is set to, the result is always forced to comply with RADKit
+# naming rules: lower-case, only [a-z0-9-], no consecutive dashes, and no
+# leading or trailing dash.
+#
+# WARNING: changing this renames every managed device (in place — UUIDs are
+# preserved).  The rename guard (sync.rename_limit) will abort the run; preview
+# with --dry-run, then re-run with --allow-renames once you are happy.
+# mode = "fqdn"
+
+# Domain suffixes stripped from the hostname before `mode` is applied.
+# Matching is case-insensitive and the longest match wins; entries may be
+# written with or without the leading dot.
+#
+#   strip_domains = [".example.com"]
+#   router1.dc1.example.com -> router1-dc1
+#   router1.partner.net     -> router1-partner-net   (no suffix matched)
+#
+# Note this can reintroduce collisions when the same prefix exists under two
+# different stripped domains.
+# strip_domains = []

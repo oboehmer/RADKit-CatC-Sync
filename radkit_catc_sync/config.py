@@ -10,6 +10,8 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
+from .naming import NameMode
+
 logger = logging.getLogger(__name__)
 
 
@@ -57,6 +59,13 @@ class AppConfig:
     # Sync behavior
     adopt_existing: bool = False
     batch_size: int = 500
+
+    # Rename guard: max devices that may be renamed in one run (-1 = unlimited)
+    rename_limit: int = 10
+
+    # Device naming ([sync.naming])
+    name_mode: str = "fqdn"
+    name_strip_domains: list[str] = field(default_factory=list)
 
     # Non-sensitive usernames that can come from config
     # (passwords must always come from env vars)
@@ -150,6 +159,29 @@ def load_config(config_path: Path | None) -> AppConfig:
     sync = cfg.get("sync", {})
     adopt_existing = sync.get("adopt_existing", False)
     batch_size = sync.get("batch_size", 500)
+    rename_limit = sync.get("rename_limit", 10)
+    if not isinstance(rename_limit, int) or isinstance(rename_limit, bool):
+        raise ValueError(
+            f"Invalid [sync] rename_limit in {config_path}: expected an integer "
+            f"(-1 disables the guard)"
+        )
+
+    # Parse [sync.naming] subsection
+    naming = sync.get("naming", {})
+    name_mode = naming.get("mode", "fqdn")
+    valid_modes = {m.value for m in NameMode}
+    if name_mode not in valid_modes:
+        raise ValueError(
+            f"Invalid [sync.naming] mode {name_mode!r} in {config_path}: "
+            f"expected one of {sorted(valid_modes)}"
+        )
+    name_strip_domains = naming.get("strip_domains", [])
+    if not isinstance(name_strip_domains, list) or not all(
+        isinstance(d, str) for d in name_strip_domains
+    ):
+        raise ValueError(
+            f"Invalid [sync.naming] strip_domains in {config_path}: expected a list of strings"
+        )
 
     return AppConfig(
         catc_clusters=catc_clusters,
@@ -162,6 +194,9 @@ def load_config(config_path: Path | None) -> AppConfig:
         device_labels=device_labels,
         adopt_existing=adopt_existing,
         batch_size=batch_size,
+        rename_limit=rename_limit,
+        name_mode=name_mode,
+        name_strip_domains=name_strip_domains,
         catc_user=catc_user,
         radkit_admin_user=radkit_admin_user,
         radkit_ssh_user=radkit_ssh_user,

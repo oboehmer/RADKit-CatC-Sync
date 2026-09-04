@@ -13,6 +13,7 @@ class SkipReason(Enum):
     """
 
     NO_HOSTNAME = "no hostname"
+    UNNAMEABLE = "unnameable hostname"
     BLACKLIST = "blacklisted"
     WHITELIST_MISS = "not whitelisted"
     COLLISION = "hostname collision"
@@ -29,6 +30,9 @@ class Stats:
     unchanged: int = 0
     adopted: int = 0
     deleted: int = 0
+    # Devices renamed in place (UpdateDevice.name). Distinct from added/deleted:
+    # a rename preserves the device UUID.
+    renamed: int = 0
     skipped: int = 0
     errors: int = 0
     warnings: list[str] = field(default_factory=list)
@@ -69,12 +73,14 @@ class Stats:
             [
                 f"  Added:           {self.added}",
                 f"  Updated:         {self.updated}",
+                f"  Renamed:         {self.renamed}  (in place — device UUID preserved)",
                 f"  Unchanged:       {self.unchanged}",
                 f"  Adopted:         {self.adopted}  (existing unmanaged devices taken over)",
                 f"  Deleted:         {self.deleted}",
-                f"  Skipped:         {self.skipped}",
             ]
         )
+        lines.append(f"  Skipped:         {self.skipped}")
+
         # Skip breakdown by reason (enum order, non-zero only)
         for reason in SkipReason:
             count = self.skipped_by_reason.get(reason, 0)
